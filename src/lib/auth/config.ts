@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import { prisma } from '@/lib/db';
+import { prisma, isDatabaseAvailable } from '@/lib/db';
 
 export const authConfig: NextAuthConfig = {
   providers: [
@@ -12,6 +12,12 @@ export const authConfig: NextAuthConfig = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
+        // Check if database is available
+        if (!isDatabaseAvailable() || !prisma) {
+          console.warn('Database not available for authentication');
+          return null;
+        }
+
         if (!credentials?.email || !credentials?.password) {
           return null;
         }

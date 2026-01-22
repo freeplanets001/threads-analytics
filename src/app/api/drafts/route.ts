@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma, isDatabaseAvailable } from '@/lib/db';
 import { auth } from '@/lib/auth';
 
 // 下書き一覧取得
 export async function GET() {
+  if (!isDatabaseAvailable() || !prisma) {
+    return NextResponse.json({ error: 'Database not available' }, { status: 503 });
+  }
+
   const session = await auth();
 
   if (!session?.user?.id) {
@@ -26,6 +30,10 @@ export async function GET() {
 
 // 下書き作成
 export async function POST(request: NextRequest) {
+  if (!isDatabaseAvailable() || !prisma) {
+    return NextResponse.json({ error: 'Database not available' }, { status: 503 });
+  }
+
   const session = await auth();
 
   if (!session?.user?.id) {
@@ -73,6 +81,10 @@ export async function POST(request: NextRequest) {
 
 // 下書き更新
 export async function PUT(request: NextRequest) {
+  if (!isDatabaseAvailable() || !prisma) {
+    return NextResponse.json({ error: 'Database not available' }, { status: 503 });
+  }
+
   const session = await auth();
 
   if (!session?.user?.id) {
@@ -110,6 +122,10 @@ export async function PUT(request: NextRequest) {
 
 // 下書き削除
 export async function DELETE(request: NextRequest) {
+  if (!isDatabaseAvailable() || !prisma) {
+    return NextResponse.json({ error: 'Database not available' }, { status: 503 });
+  }
+
   const session = await auth();
 
   if (!session?.user?.id) {

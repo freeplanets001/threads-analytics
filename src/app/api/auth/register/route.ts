@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { prisma } from '@/lib/db';
+import { prisma, isDatabaseAvailable } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if database is available
+    if (!isDatabaseAvailable() || !prisma) {
+      return NextResponse.json(
+        { error: 'データベースが設定されていません。管理者にお問い合わせください。' },
+        { status: 503 }
+      );
+    }
+
     const { email, password, name } = await request.json();
 
     if (!email || !password) {
