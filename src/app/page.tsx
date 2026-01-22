@@ -97,6 +97,14 @@ export default function AnalyticsDashboard() {
   const [newToken, setNewToken] = useState('');
   const [addingAccount, setAddingAccount] = useState(false);
 
+  // トークン変換用
+  const [showTokenConverter, setShowTokenConverter] = useState(false);
+  const [shortToken, setShortToken] = useState('');
+  const [convertedToken, setConvertedToken] = useState('');
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!currentAccount) return;
 
@@ -139,6 +147,38 @@ export default function AnalyticsDashboard() {
     } else {
       setError(result.error || 'Failed to add account');
     }
+  };
+
+  const handleConvertToken = async () => {
+    if (!shortToken.trim()) return;
+    setConverting(true);
+    setConvertError(null);
+    setConvertedToken('');
+    setTokenExpiresIn(null);
+
+    try {
+      const res = await fetch('/api/threads/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortLivedToken: shortToken.trim() }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setConvertError(data.error || '変換に失敗しました');
+      } else {
+        setConvertedToken(data.accessToken);
+        setTokenExpiresIn(data.expiresIn);
+      }
+    } catch {
+      setConvertError('通信エラーが発生しました');
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   const exportData = (format: 'json' | 'csv') => {
@@ -250,12 +290,86 @@ export default function AnalyticsDashboard() {
             </button>
 
             <div className="pt-4 border-t border-slate-200">
+              <button
+                onClick={() => setShowTokenConverter(!showTokenConverter)}
+                className="w-full text-left text-sm font-medium text-violet-600 hover:text-violet-700 flex items-center justify-between"
+              >
+                <span>短期トークン → 長期トークン変換ツール</span>
+                <span className="text-lg">{showTokenConverter ? '−' : '+'}</span>
+              </button>
+
+              {showTokenConverter && (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      短期トークン（Graph API Explorerで取得）
+                    </label>
+                    <textarea
+                      value={shortToken}
+                      onChange={(e) => setShortToken(e.target.value)}
+                      placeholder="短期トークンを貼り付け..."
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 h-16 resize-none"
+                    />
+                  </div>
+
+                  <button
+                    onClick={handleConvertToken}
+                    disabled={converting || !shortToken.trim()}
+                    className="w-full py-2 bg-cyan-600 text-white text-sm font-medium rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50"
+                  >
+                    {converting ? '変換中...' : '長期トークンに変換'}
+                  </button>
+
+                  {convertError && (
+                    <p className="text-xs text-red-600">{convertError}</p>
+                  )}
+
+                  {convertedToken && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-emerald-700">長期トークン（約60日間有効）</span>
+                        <button
+                          onClick={() => copyToClipboard(convertedToken)}
+                          className="text-xs text-emerald-600 hover:text-emerald-800"
+                        >
+                          コピー
+                        </button>
+                      </div>
+                      <p className="text-xs text-emerald-800 break-all font-mono bg-emerald-100 p-2 rounded">
+                        {convertedToken.substring(0, 50)}...
+                      </p>
+                      {tokenExpiresIn && (
+                        <p className="text-xs text-emerald-600 mt-1">
+                          有効期限: {Math.floor(tokenExpiresIn / 86400)}日
+                        </p>
+                      )}
+                      <button
+                        onClick={() => {
+                          setNewToken(convertedToken);
+                          setConvertedToken('');
+                          setShortToken('');
+                        }}
+                        className="mt-2 w-full py-1.5 bg-emerald-600 text-white text-xs font-medium rounded hover:bg-emerald-700"
+                      >
+                        このトークンを上の入力欄にセット
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-slate-500">
+                    ※ THREADS_APP_SECRETがサーバーに設定されている必要があります
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-slate-200">
               <p className="text-xs text-slate-500 mb-2">トークンの取得方法:</p>
               <ol className="text-xs text-slate-500 space-y-1 list-decimal ml-4">
                 <li>Meta for Developersでアプリを作成</li>
                 <li>Threads APIの権限を追加</li>
                 <li>Graph API Explorerでトークンを生成</li>
-                <li>長期トークンに変換</li>
+                <li>上の変換ツールで長期トークンに変換</li>
               </ol>
             </div>
           </div>
@@ -406,6 +520,66 @@ export default function AnalyticsDashboard() {
                 >
                   {addingAccount ? '確認中...' : '追加'}
                 </button>
+              </div>
+
+              {/* Token Converter */}
+              <div className="pt-4 border-t border-slate-200">
+                <button
+                  onClick={() => setShowTokenConverter(!showTokenConverter)}
+                  className="w-full text-left text-sm font-medium text-cyan-600 hover:text-cyan-700 flex items-center justify-between"
+                >
+                  <span>トークン変換ツール</span>
+                  <span>{showTokenConverter ? '−' : '+'}</span>
+                </button>
+
+                {showTokenConverter && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={shortToken}
+                      onChange={(e) => setShortToken(e.target.value)}
+                      placeholder="短期トークンを貼り付け..."
+                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 h-16 resize-none"
+                    />
+                    <button
+                      onClick={handleConvertToken}
+                      disabled={converting || !shortToken.trim()}
+                      className="w-full py-1.5 bg-cyan-600 text-white text-xs font-medium rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50"
+                    >
+                      {converting ? '変換中...' : '長期トークンに変換'}
+                    </button>
+
+                    {convertError && (
+                      <p className="text-xs text-red-600">{convertError}</p>
+                    )}
+
+                    {convertedToken && (
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-emerald-700">変換完了</span>
+                          <button
+                            onClick={() => copyToClipboard(convertedToken)}
+                            className="text-xs text-emerald-600 hover:text-emerald-800"
+                          >
+                            コピー
+                          </button>
+                        </div>
+                        <p className="text-xs text-emerald-800 break-all font-mono">
+                          {convertedToken.substring(0, 40)}...
+                        </p>
+                        <button
+                          onClick={() => {
+                            setNewToken(convertedToken);
+                            setConvertedToken('');
+                            setShortToken('');
+                          }}
+                          className="mt-1 w-full py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700"
+                        >
+                          上の入力欄にセット
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
