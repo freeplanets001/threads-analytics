@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// テキスト生成（OpenAI互換API - Groqも対応）
+// テキスト生成・画像生成（Gemini API対応）
 export async function POST(request: NextRequest) {
   try {
-    const { type, prompt, options } = await request.json();
+    const { type, prompt, context, postType, options, apiKey } = await request.json();
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'AI APIキーが設定されていません。設定画面でGemini APIキーを入力してください。' },
+        { status: 400 }
+      );
+    }
 
     if (type === 'text') {
-      return generateText(prompt, options);
+      return generateTextWithGemini(prompt, apiKey, { ...options, context, postType });
     } else if (type === 'image') {
-      return generateImage(prompt, options);
+      return generateImageWithNanoBananaPro(prompt, apiKey, options);
     } else {
       return NextResponse.json({ error: '無効なタイプです' }, { status: 400 });
     }
@@ -21,185 +28,526 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateText(prompt: string, options?: { tone?: string; length?: string }) {
-  // Groq API（無料で高速）を優先、なければOpenAIを使用
-  const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
-  const apiUrl = process.env.GROQ_API_KEY
-    ? 'https://api.groq.com/openai/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-  const model = process.env.GROQ_API_KEY ? 'llama-3.1-70b-versatile' : 'gpt-3.5-turbo';
+async function generateTextWithGemini(
+  prompt: string,
+  apiKey: string,
+  options?: { tone?: string; length?: string; customPrompt?: string; context?: string; postType?: string }
+) {
+  // カスタムプロンプトがあればそれを使用、なければデフォルト
+  const defaultSystemPrompt = `あなたは「Threads（スレッズ）」で10万人以上のフォロワーを持つトップインフルエンサーです。
+バズる投稿、高エンゲージメントを獲得する投稿の作成に長けています。
 
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'AI APIキーが設定されていません' },
-      { status: 500 }
-    );
+【Threadsの特徴】
+- テキスト中心のSNS（最大500文字）
+- カジュアルで親しみやすい雰囲気
+- 共感・気づき・学びのある投稿が伸びやすい
+
+【バズる投稿の法則】
+1. フック（冒頭）: 最初の1行で「読みたい」と思わせる
+   - 数字を使う：「3つの理由」「5分で」
+   - 逆説・意外性：「実は〇〇は間違い」
+   - 共感：「〇〇な人、いませんか？」
+
+2. 本文: 1文は短く、箇条書きや改行を効果的に
+
+3. 締め（CTA）:
+   - 質問で終わる：「あなたはどう思いますか？」
+   - 共感を求める：「同じ人いたらいいね」
+
+4. 絵文字: 冒頭に1つ、強調部分に1-2個、末尾に1つ（計3-5個）
+
+5. ハッシュタグ: 関連性の高いものを2-3個、末尾に配置`;
+
+  const basePrompt = options?.customPrompt || defaultSystemPrompt;
+
+  // トーンの設定
+  let toneInstruction = '';
+  if (options?.tone === 'professional') {
+    toneInstruction = '専門家・プロフェッショナルとして信頼感のある文体で書いてください。データや根拠を示してください。';
+  } else if (options?.tone === 'casual') {
+    toneInstruction = '友達に話すようなフレンドリーで軽い文体で書いてください。「〜だよね」「〜かも」などを使用してください。';
+  } else {
+    toneInstruction = '読者参加型で、質問を多用し、コメントを促す文体で書いてください。';
   }
 
-  const systemPrompt = `あなたはThreadsの投稿を作成するアシスタントです。
-以下のルールに従って投稿文を生成してください：
-- 500文字以内（Threadsの制限）
-- 絵文字を適度に使用
-- 読みやすく、エンゲージメントを高める文体
-- ハッシュタグは最大5個まで
-${options?.tone ? `- トーン: ${options.tone}` : ''}
-${options?.length === 'short' ? '- 100文字以内の短い投稿' : ''}
-${options?.length === 'long' ? '- 300-500文字の長めの投稿' : ''}`;
+  // 文字数の設定
+  let lengthInstruction = '';
+  if (options?.length === 'short') {
+    lengthInstruction = '50-100文字程度の短くインパクトのある投稿を作成してください。';
+  } else if (options?.length === 'long') {
+    lengthInstruction = '300-450文字程度の長めの投稿を作成してください。ストーリー性を持たせてください。';
+  } else {
+    lengthInstruction = '150-250文字程度の投稿を作成してください。読みやすさとボリュームのバランスを取ってください。';
+  }
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 1000,
-      temperature: 0.8,
-    }),
-  });
+  // 投稿タイプの指示
+  let postTypeInstruction = '';
+  switch (options?.postType) {
+    case 'tips':
+      postTypeInstruction = '【投稿タイプ】Tips・ノウハウ形式で、読者に役立つ情報を提供する投稿を作成してください。箇条書きや番号付きリストを活用してください。';
+      break;
+    case 'story':
+      postTypeInstruction = '【投稿タイプ】体験談・ストーリー形式で、あなた自身の経験を語るような投稿を作成してください。感情を込めて、読者が共感できる内容にしてください。';
+      break;
+    case 'opinion':
+      postTypeInstruction = '【投稿タイプ】意見・考察形式で、テーマに対するあなたの見解や分析を述べる投稿を作成してください。根拠を示しながら主張してください。';
+      break;
+    case 'announcement':
+      postTypeInstruction = '【投稿タイプ】告知・紹介形式で、テーマの魅力や特徴を伝える投稿を作成してください。ワクワク感を演出してください。';
+      break;
+    case 'question':
+      postTypeInstruction = '【投稿タイプ】質問・問いかけ形式で、読者に考えさせたり、コメントを促す投稿を作成してください。';
+      break;
+    default:
+      postTypeInstruction = '【投稿タイプ】テーマに最適な形式を自動で選択して投稿を作成してください。';
+  }
+
+  // 追加の文脈情報
+  const contextInfo = options?.context
+    ? `\n【テーマの詳細・背景情報】\n${options.context}\n`
+    : '';
+
+  // 最終的なプロンプトを構築
+  const fullPrompt = `${basePrompt}
+
+===
+
+【今回の指示】
+テーマ・キーワード: 「${prompt}」
+${contextInfo}
+${postTypeInstruction}
+
+${toneInstruction}
+${lengthInstruction}
+
+【重要な出力ルール - 必ず守ること】
+- 投稿文のみを出力してください
+- 「以下が投稿です」などの前置きは絶対に書かないでください
+- 説明や解説は一切不要です
+- そのままコピペして投稿できる形式で出力してください
+- 最後に改行してハッシュタグを2-3個配置してください
+- 必ず完結した投稿文を出力してください（途中で切れないように）
+- 提供された「テーマの詳細・背景情報」がある場合は、必ずその情報に基づいて投稿を作成してください
+
+【フォーマットルール - 絶対禁止事項】
+- マークダウン記法は一切使用しないでください
+- ###、##、# などの見出し記号は使用禁止
+- ** や * などの強調記号は使用禁止
+- - や * のリスト記号は使用禁止（代わりに「・」や「→」を使用）
+- > の引用記号は使用禁止
+- プレーンテキストのみで出力してください
+- 箇条書きには「・」「→」「①②③」などを使用してください
+
+上記のテーマで、バズるThreads投稿を1つ作成してください。`;
+
+  // gemini-flash-latest を使用（最新のFlashモデル）
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: fullPrompt }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 2048,
+          topP: 0.95,
+          topK: 40,
+        },
+      }),
+    }
+  );
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error?.message || 'Text generation failed');
+    console.error('Gemini API error:', error);
+
+    // より詳細なエラーメッセージ
+    const errorMessage = error.error?.message || 'Text generation failed';
+    if (errorMessage.includes('API key')) {
+      throw new Error('APIキーが無効です。正しいGemini APIキーを設定してください。');
+    }
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();
-  const generatedText = data.choices[0]?.message?.content || '';
+
+  // デバッグ用ログ
+  console.log('Gemini response:', JSON.stringify(data, null, 2));
+
+  const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  // 生成が途中で止まった場合のチェック
+  const finishReason = data.candidates?.[0]?.finishReason;
+  if (finishReason && finishReason !== 'STOP') {
+    console.warn('Generation did not complete normally:', finishReason);
+  }
+
+  // テキストのクリーンアップ（マークダウン記号の除去）
+  let cleanedText = generatedText.trim();
+
+  // コードブロックの削除
+  cleanedText = cleanedText
+    .replace(/^```[a-z]*\n?/gm, '')
+    .replace(/```$/gm, '');
+
+  // マークダウン記号の除去
+  cleanedText = cleanedText
+    // 見出し記号（###、##、#）を削除
+    .replace(/^#{1,6}\s*/gm, '')
+    // 強調記号（**text** や *text*）からテキストを抽出
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    // リスト記号（- や *）を「・」に変換
+    .replace(/^[\-\*]\s+/gm, '・')
+    // 引用記号を削除
+    .replace(/^>\s*/gm, '')
+    // 連続する空行を1つに
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 
   return NextResponse.json({
     success: true,
-    text: generatedText.trim(),
-    model,
+    text: cleanedText,
+    model: 'gemini-flash-latest',
+    finishReason: finishReason,
   });
 }
 
-async function generateImage(prompt: string, options?: { style?: string; size?: string }) {
-  // Hugging Face API（無料）を優先
-  const hfApiKey = process.env.HUGGINGFACE_API_KEY;
-  const openaiApiKey = process.env.OPENAI_API_KEY;
+// プロンプトを最適化する関数（日本語対応強化）
+async function optimizePrompt(
+  prompt: string,
+  apiKey: string,
+  options?: { translateToEnglish?: boolean; autoOptimize?: boolean; negativePrompt?: string; preserveJapaneseText?: boolean }
+): Promise<string> {
+  if (!options?.autoOptimize) {
+    return prompt;
+  }
 
-  if (hfApiKey) {
-    // Hugging Face Stable Diffusion
+  try {
+    // 日本語テキストを画像内に含めるかどうかを検出
+    const wantsJapaneseText = /日本語|japanese|にほんご|漢字|ひらがな|カタカナ/i.test(prompt);
+    const preserveJapanese = options.preserveJapaneseText || wantsJapaneseText;
+
+    const systemPrompt = `You are an expert at writing prompts for AI image generation.
+Your task is to optimize the following image generation prompt.
+
+Instructions:
+- Enhance the prompt with additional descriptive details for better image quality
+- Add quality modifiers like "high quality", "detailed", "professional"
+- Make the prompt more specific and vivid
+${preserveJapanese ? `
+CRITICAL - JAPANESE TEXT HANDLING:
+- If the user wants Japanese text/characters in the image, KEEP those instructions in the prompt
+- Do NOT translate requests for Japanese text into English text requests
+- Example: "日本語でテキストを入れて" should result in Japanese text appearing in the image
+- Preserve any specific Japanese words/phrases that should appear in the image
+` : ''}
+
+IMPORTANT:
+- Output ONLY the optimized prompt, nothing else
+- Do not include any explanations or additional text
+- Keep the core subject/theme intact
+- The prompt should be understood by Gemini image generation model
+
+Original prompt: "${prompt}"
+${options.negativePrompt ? `\nElements to avoid: ${options.negativePrompt}` : ''}
+
+Optimized prompt:`;
+
     const response = await fetch(
-      'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
       {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${hfApiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          inputs: prompt,
-          parameters: {
-            negative_prompt: 'blurry, bad quality, distorted',
+          contents: [{ parts: [{ text: systemPrompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 500,
           },
         }),
       }
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Image generation failed');
-    }
-
-    // Hugging Faceは画像バイナリを返す
-    const imageBlob = await response.blob();
-    const arrayBuffer = await imageBlob.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-
-    return NextResponse.json({
-      success: true,
-      image: `data:image/png;base64,${base64}`,
-      provider: 'huggingface',
-    });
-  } else if (openaiApiKey) {
-    // OpenAI DALL-E（有料だが高品質）
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt,
-        n: 1,
-        size: options?.size || '1024x1024',
-        quality: 'standard',
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Image generation failed');
+      console.error('Prompt optimization failed, using original');
+      return prompt;
     }
 
     const data = await response.json();
-    const imageUrl = data.data[0]?.url;
+    const optimizedPrompt = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
-    return NextResponse.json({
-      success: true,
-      imageUrl,
-      provider: 'openai',
-    });
-  } else {
-    return NextResponse.json(
-      { error: '画像生成APIキーが設定されていません' },
-      { status: 500 }
-    );
+    return optimizedPrompt || prompt;
+  } catch (error) {
+    console.error('Prompt optimization error:', error);
+    return prompt;
   }
+}
+
+async function generateImageWithNanoBananaPro(
+  prompt: string,
+  apiKey: string,
+  options?: {
+    style?: string;
+    aspectRatio?: string;
+    imageSize?: string;
+    negativePrompt?: string;
+    autoOptimize?: boolean;
+    translateToEnglish?: boolean;
+    quality?: string;
+    preserveJapaneseText?: boolean;
+  }
+) {
+  // 日本語テキストを画像内に含めるかどうかを検出
+  const wantsJapaneseText = /日本語|japanese|にほんご|漢字|ひらがな|カタカナ|テキストは/i.test(prompt);
+
+  // プロンプトの最適化（翻訳はしない - 日本語対応を優先）
+  let enhancedPrompt = prompt;
+
+  if (options?.autoOptimize) {
+    enhancedPrompt = await optimizePrompt(prompt, apiKey, {
+      autoOptimize: true,
+      negativePrompt: options.negativePrompt,
+      preserveJapaneseText: wantsJapaneseText || options.preserveJapaneseText,
+    });
+  }
+
+  // 品質に応じた追加プロンプト
+  const qualityModifiers = {
+    draft: '',
+    standard: 'high quality, detailed, professional lighting',
+    high: 'masterpiece, best quality, highly detailed, sharp focus, professional photography, 8k resolution, cinematic lighting',
+  };
+  const qualityMod = qualityModifiers[options?.quality as keyof typeof qualityModifiers] || qualityModifiers.standard;
+
+  // アスペクト比の指示
+  const aspectRatioInstruction = options?.aspectRatio
+    ? `Aspect ratio: ${options.aspectRatio}.`
+    : '';
+
+  // 日本語テキスト指示を強調
+  const japaneseTextInstruction = wantsJapaneseText
+    ? 'CRITICAL: All text in the image must be written in Japanese (日本語). Use proper Japanese characters (漢字、ひらがな、カタカナ).'
+    : '';
+
+  // スタイルの整理
+  const styleDescription = options?.style
+    ? `Style: ${options.style}.`
+    : '';
+
+  // プロンプト構築（より明確で効果的な形式）
+  const promptParts = [
+    enhancedPrompt,
+    styleDescription,
+    qualityMod,
+    aspectRatioInstruction,
+    japaneseTextInstruction,
+    options?.negativePrompt ? `Do not include: ${options.negativePrompt}` : '',
+  ].filter(Boolean);
+
+  const finalPrompt = promptParts.join(' ');
+
+  // 画像生成対応モデル（Nano Banana Pro = Gemini 3 Pro Image Preview）
+  const modelsToTry = [
+    'gemini-3-pro-image-preview',  // Nano Banana Pro - 最高品質の画像生成モデル
+    'gemini-2.0-flash-exp',        // フォールバック
+  ];
+
+  let lastError = '';
+
+  console.log('Final image prompt:', finalPrompt);
+
+  for (const model of modelsToTry) {
+    try {
+      console.log(`Trying image generation with model: ${model}`);
+
+      // モデルに応じた設定
+      const isGemini3Pro = model.includes('gemini-3-pro');
+
+      // Gemini 3 Pro Image Preview用の最適化された設定
+      const generationConfig = isGemini3Pro
+        ? {
+            responseModalities: ['IMAGE', 'TEXT'],
+            temperature: 1.0,  // クリエイティブな生成
+          }
+        : {
+            responseModalities: ['IMAGE', 'TEXT'],
+          };
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: finalPrompt }
+                ]
+              }
+            ],
+            generationConfig,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error(`${model} API error:`, errorData);
+        const errorMessage = errorData.error?.message || '画像生成に失敗しました';
+
+        // 過負荷エラーの場合は次のモデルを試す
+        if (errorMessage.includes('overloaded') || errorMessage.includes('503')) {
+          lastError = errorMessage;
+          continue;
+        }
+
+        lastError = errorMessage;
+        continue;
+      }
+
+      const data = await response.json();
+      console.log(`${model} response:`, JSON.stringify(data, null, 2));
+
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      const imagePart = parts.find((part: { inlineData?: { mimeType: string; data: string } }) =>
+        part.inlineData?.mimeType?.startsWith('image/')
+      );
+
+      if (imagePart?.inlineData) {
+        const mimeType = imagePart.inlineData.mimeType;
+        const base64Data = imagePart.inlineData.data;
+
+        // モデル名を分かりやすく表示
+        const providerName = model === 'gemini-3-pro-image-preview'
+          ? 'Nano Banana Pro (Gemini 3 Pro)'
+          : model;
+
+        return NextResponse.json({
+          success: true,
+          image: `data:${mimeType};base64,${base64Data}`,
+          provider: providerName,
+          model: model,
+        });
+      }
+
+      // 画像が生成されなかった場合
+      const textPart = parts.find((part: { text?: string }) => part.text);
+      if (textPart?.text) {
+        lastError = textPart.text;
+        continue;
+      }
+
+    } catch (err) {
+      console.error(`${model} error:`, err);
+      lastError = err instanceof Error ? err.message : 'Unknown error';
+      continue;
+    }
+  }
+
+  // すべてのモデルで失敗した場合
+  let suggestion = 'しばらく待ってから再度お試しください。';
+
+  // エラーの種類に応じたアドバイス
+  if (lastError.includes('billing') || lastError.includes('quota') || lastError.includes('API key')) {
+    suggestion = 'Nano Banana Pro (Gemini 3 Pro Image Preview) は有料モデルです。Google AI Studio で課金設定を有効にしてください。';
+  } else if (lastError.includes('overloaded') || lastError.includes('503')) {
+    suggestion = 'モデルが過負荷です。しばらく待ってから再度お試しください。';
+  } else if (lastError.includes('safety') || lastError.includes('blocked')) {
+    suggestion = 'プロンプトが安全ポリシーに抵触した可能性があります。別の表現をお試しください。';
+  }
+
+  return NextResponse.json(
+    {
+      error: `画像生成に失敗しました: ${lastError}`,
+      suggestion,
+      alternatives: [
+        { name: 'Google AI Studio', url: 'https://aistudio.google.com/' },
+        { name: 'Ideogram', url: 'https://ideogram.ai/' },
+        { name: 'Leonardo.ai', url: 'https://leonardo.ai/' },
+      ]
+    },
+    { status: 503 }
+  );
 }
 
 // 投稿改善提案
 export async function PUT(request: NextRequest) {
   try {
-    const { text, targetMetric } = await request.json();
-
-    const apiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
-    const apiUrl = process.env.GROQ_API_KEY
-      ? 'https://api.groq.com/openai/v1/chat/completions'
-      : 'https://api.openai.com/v1/chat/completions';
-    const model = process.env.GROQ_API_KEY ? 'llama-3.1-70b-versatile' : 'gpt-3.5-turbo';
+    const { text, targetMetric, apiKey } = await request.json();
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'AI APIキーが設定されていません' },
-        { status: 500 }
+        { error: 'AI APIキーが設定されていません。設定画面でGemini APIキーを入力してください。' },
+        { status: 400 }
       );
     }
 
-    const systemPrompt = `あなたはSNSマーケティングの専門家です。
-与えられたThreadsの投稿文を分析し、改善提案を行ってください。
-${targetMetric === 'engagement' ? 'エンゲージメント（いいね、リプライ）を最大化することを目指してください。' : ''}
-${targetMetric === 'reach' ? 'リーチ（閲覧数）を最大化することを目指してください。' : ''}
-${targetMetric === 'viral' ? 'バイラル性（リポスト、引用）を最大化することを目指してください。' : ''}
+    const systemPrompt = `# あなたの役割
+あなたはThreadsで10万人以上のフォロワーを持つSNSマーケティングの専門家です。
+投稿の分析と改善提案を行います。
 
-以下の形式で回答してください：
-1. 現状の分析
-2. 改善点
-3. 改善後の投稿文`;
+# 目標指標
+${targetMetric === 'engagement' ? '【最適化目標】エンゲージメント（いいね・リプライ数）の最大化' : ''}
+${targetMetric === 'reach' ? '【最適化目標】リーチ（閲覧数・インプレッション）の最大化' : ''}
+${targetMetric === 'viral' ? '【最適化目標】バイラル性（リポスト・引用・シェア）の最大化' : ''}
+${!targetMetric ? '【最適化目標】総合的なエンゲージメント向上' : ''}
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `以下の投稿を改善してください：\n\n${text}` },
-        ],
-        max_tokens: 1500,
-        temperature: 0.7,
-      }),
-    });
+# 分析観点
+1. フック（冒頭）の強さ - 最初の1行で興味を引けているか
+2. 感情トリガー - 共感・驚き・学びの要素があるか
+3. CTA（行動喚起）- リプライやいいねを促す要素があるか
+4. 読みやすさ - 改行・文の長さは適切か
+5. ハッシュタグ - 適切なタグが使われているか
+
+# 出力形式（厳守）
+
+## 📊 現状分析
+（この投稿の良い点と改善点を2-3行で）
+
+## 💡 改善ポイント
+- ポイント1
+- ポイント2
+- ポイント3
+
+## ✨ 改善後の投稿文
+（そのままコピペできる形式で出力。前置きや説明は不要）`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: `${systemPrompt}\n\n# 改善対象の投稿\n${text}` }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 2048,
+            topP: 0.9,
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const error = await response.json();
@@ -207,7 +555,7 @@ ${targetMetric === 'viral' ? 'バイラル性（リポスト、引用）を最�
     }
 
     const data = await response.json();
-    const suggestion = data.choices[0]?.message?.content || '';
+    const suggestion = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     return NextResponse.json({
       success: true,

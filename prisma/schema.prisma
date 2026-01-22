@@ -1,12 +1,20 @@
-// Threads Analytics Pro - Database Schema
+// Threads Studio - Database Schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ロール定義
+enum Role {
+  ADMIN
+  PRO
+  STANDARD
 }
 
 // ユーザーモデル
@@ -19,15 +27,24 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  // サブスクリプション
-  plan          String    @default("free") // free, pro, business
+  // ロール（Admin, Pro, Standard）
+  role          Role      @default(STANDARD)
+
+  // サブスクリプション（後方互換性のため残す）
+  plan          String    @default("free")
   planExpiresAt DateTime?
   stripeCustomerId String?
+
+  // 設定
+  settings      String?   // JSON: ダークモード、通知設定など
 
   // 関連
   threadsAccounts ThreadsAccount[]
   drafts          Draft[]
   scheduledPosts  ScheduledPost[]
+  templates       PostTemplate[]
+  reports         Report[]
+  notifications   Notification[]
 
   @@map("users")
 }
@@ -48,6 +65,8 @@ model ThreadsAccount {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   drafts        Draft[]
   scheduledPosts ScheduledPost[]
+  analytics     AnalyticsSnapshot[]
+  autoReplyRules AutoReplyRule[]
 
   @@map("threads_accounts")
 }
@@ -59,6 +78,7 @@ model Draft {
   accountId     String
 
   // 投稿内容
+  title         String?  // 下書きのタイトル（管理用）
   type          String   // text, image, video, carousel, thread
   text          String?
   mediaUrls     String?  // JSON array
@@ -71,6 +91,31 @@ model Draft {
   account       ThreadsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@map("drafts")
+}
+
+// 投稿テンプレート
+model PostTemplate {
+  id            String   @id @default(cuid())
+  userId        String
+
+  name          String   // テンプレート名
+  description   String?  // 説明
+  category      String?  // カテゴリ
+
+  // テンプレート内容
+  type          String   // text, image, video, carousel, thread
+  text          String?
+  mediaUrls     String?  // JSON array
+
+  // 使用統計
+  usageCount    Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("post_templates")
 }
 
 // 予約投稿
@@ -91,6 +136,11 @@ model ScheduledPost {
   errorMessage  String?
   postedId      String?  // 投稿後のID
 
+  // 繰り返し設定
+  isRecurring   Boolean  @default(false)
+  recurringType String?  // daily, weekly, monthly
+  recurringDays String?  // JSON array of days (0-6 for weekly)
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -100,7 +150,160 @@ model ScheduledPost {
   @@map("scheduled_posts")
 }
 
-// プランの機能制限
-// free: 1アカウント、下書き3件、予約投稿なし
-// pro: 3アカウント、下書き無制限、予約投稿10件/月
-// business: 無制限アカウント、下書き無制限、予約投稿無制限
+// 分析スナップショット（週次/月次レポート用）
+model AnalyticsSnapshot {
+  id            String   @id @default(cuid())
+  accountId     String
+
+  // スナップショットタイプ
+  type          String   // daily, weekly, monthly
+  periodStart   DateTime
+  periodEnd     DateTime
+
+  // 統計データ（JSON）
+  data          String   // JSON: followers, views, likes, etc.
+
+  createdAt     DateTime @default(now())
+
+  account       ThreadsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("analytics_snapshots")
+}
+
+// レポート
+model Report {
+  id            String   @id @default(cuid())
+  userId        String
+
+  title         String
+  type          String   // weekly, monthly, custom
+  periodStart   DateTime
+  periodEnd     DateTime
+
+  // レポートデータ（JSON）
+  data          String
+
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+// 通知
+model Notification {
+  id            String   @id @default(cuid())
+  userId        String
+
+  type          String   // post_success, post_failed, report_ready, system
+  title         String
+  message       String
+  isRead        Boolean  @default(false)
+
+  // 関連データ
+  relatedId     String?  // 関連する投稿IDなど
+  relatedType   String?  // scheduled_post, report, etc.
+
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ロール権限設定（グローバル設定）
+model RolePermission {
+  id            String   @id @default(cuid())
+
+  role          Role     @unique
+
+  // 機能制限（JSON）
+  permissions   String   // JSON: { "scheduledPosts": true, "maxAccounts": 3, ... }
+
+  updatedAt     DateTime @updatedAt
+
+  @@map("role_permissions")
+}
+
+// システム設定
+model SystemSetting {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  value         String
+  description   String?
+
+  updatedAt     DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// 自動リプライルール
+model AutoReplyRule {
+  id            String   @id @default(cuid())
+  accountId     String
+
+  name          String   // ルール名
+  isActive      Boolean  @default(true)
+
+  // トリガー条件
+  triggerType   String   // keyword, mention, all
+  triggerKeywords String? // JSON array of keywords
+
+  // 返信内容
+  responseType  String   @default("fixed") // fixed, template
+  responseText  String   // 返信テキスト（{username}などのプレースホルダー対応）
+  responseDelay Int      @default(60) // 返信までの遅延（秒）
+
+  // 条件
+  onlyNewFollowers Boolean @default(false)
+  excludeFollowing Boolean @default(false)
+  maxRepliesPerDay Int     @default(50)
+
+  // 統計
+  totalReplies  Int      @default(0)
+  todayReplies  Int      @default(0)
+  lastReplyAt   DateTime?
+  lastResetDate DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  account       ThreadsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  replyLogs     AutoReplyLog[]
+
+  @@map("auto_reply_rules")
+}
+
+// 自動リプライログ
+model AutoReplyLog {
+  id            String   @id @default(cuid())
+  ruleId        String
+
+  // 元のリプライ情報
+  originalPostId String
+  originalUserId String
+  originalUsername String
+  originalText  String?
+
+  // 返信情報
+  replyPostId   String?
+  replyText     String
+  status        String   @default("pending") // pending, sent, failed
+  errorMessage  String?
+
+  createdAt     DateTime @default(now())
+
+  rule          AutoReplyRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@map("auto_reply_logs")
+}
+
+// 処理済みリプライ（重複防止用）
+model ProcessedReply {
+  id            String   @id @default(cuid())
+  accountId     String
+  replyId       String   @unique // Threads APIからのリプライID
+  processedAt   DateTime @default(now())
+
+  @@map("processed_replies")
+}

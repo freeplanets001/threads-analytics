@@ -57,16 +57,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Free プランは予約投稿不可
-    if (user.plan === 'free') {
+    // Free プランは予約投稿不可（ADMINは除外）
+    if (user.plan === 'free' && user.role !== 'ADMIN') {
       return NextResponse.json(
         { error: 'Free プランでは予約投稿は利用できません。プランをアップグレードしてください。' },
         { status: 403 }
       );
     }
 
-    // Pro プランは月10件まで
-    if (user.plan === 'pro' && user.scheduledPosts.length >= 10) {
+    // Pro プランは月10件まで（ADMINは除外）
+    if (user.plan === 'pro' && user.role !== 'ADMIN' && user.scheduledPosts.length >= 10) {
       return NextResponse.json(
         { error: 'Pro プランでは予約投稿は月10件までです。Business プランにアップグレードしてください。' },
         { status: 403 }
@@ -84,10 +84,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // accountIdがThreadsUserIdの場合、データベースのアカウントを検索
+    let dbAccountId = accountId;
+    const account = await prisma.threadsAccount.findFirst({
+      where: {
+        OR: [
+          { id: accountId },
+          { threadsUserId: accountId },
+        ],
+        userId: session.user.id,
+      },
+    });
+
+    if (account) {
+      dbAccountId = account.id;
+    } else {
+      return NextResponse.json(
+        { error: 'アカウントが見つかりません。' },
+        { status: 404 }
+      );
+    }
+
     const scheduledPost = await prisma.scheduledPost.create({
       data: {
         userId: session.user.id,
-        accountId,
+        accountId: dbAccountId,
         type,
         text,
         mediaUrls: mediaUrls ? JSON.stringify(mediaUrls) : null,

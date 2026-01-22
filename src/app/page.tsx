@@ -6,7 +6,19 @@ import {
   TopPostsList,
 } from '@/components/analytics';
 import { PostComposer } from '@/components/PostComposer';
+import { PostsAnalyticsTable } from '@/components/PostsAnalyticsTable';
+import { BulkPostGenerator } from '@/components/BulkPostGenerator';
+import { ScheduleManager } from '@/components/ScheduleManager';
+import { DraftManager } from '@/components/DraftManager';
+import { TemplateManager } from '@/components/TemplateManager';
+import { NotificationCenter, NotificationBell } from '@/components/NotificationCenter';
+import { ReportGenerator } from '@/components/ReportGenerator';
+import { RecurringPostManager } from '@/components/RecurringPostManager';
+import { PostCalendar } from '@/components/PostCalendar';
+import { AutoReplyManager } from '@/components/AutoReplyManager';
+import { useTheme } from '@/contexts/ThemeContext';
 import Link from 'next/link';
+import { Role, hasPermission, getRoleName, getPermissions } from '@/lib/permissions';
 import {
   PostingHoursChart,
   PostingDaysChart,
@@ -24,7 +36,7 @@ import {
 import { useAccountManager } from '@/hooks/useAccountManager';
 import type { AnalyticsResult, HashtagAnalysis, KeywordAnalysis, HeatmapData, AIInsight, DailyTrend } from '@/lib/analytics/calculations';
 
-type TabType = 'overview' | 'compose' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'export';
+type TabType = 'overview' | 'compose' | 'bulk' | 'schedule' | 'recurring' | 'autoreply' | 'drafts' | 'templates' | 'calendar' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'reports' | 'export';
 
 interface ThreadWithInsights {
   id: string;
@@ -107,6 +119,47 @@ export default function AnalyticsDashboard() {
   const [convertError, setConvertError] = useState<string | null>(null);
   const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
 
+  // ロール管理（開発用: デフォルトでADMIN）
+  const [userRole, setUserRole] = useState<Role>('ADMIN');
+  const permissions = getPermissions(userRole);
+
+  // テーマ管理
+  const { theme, setTheme, actualTheme } = useTheme();
+
+  // 投稿作成用の初期テキスト（テンプレート・下書きから）
+  const [initialComposeText, setInitialComposeText] = useState<string>('');
+  const [composerKey, setComposerKey] = useState(0);
+
+  // 通知センター
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // ロールをサーバーから取得（localStorageはフォールバック）
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const res = await fetch('/api/admin/setup');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user?.role && ['ADMIN', 'PRO', 'STANDARD'].includes(data.user.role)) {
+            setUserRole(data.user.role as Role);
+            localStorage.setItem('user_role', data.user.role);
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('Failed to fetch user role from server', e);
+      }
+
+      // フォールバック: localStorageから読み込み
+      const savedRole = localStorage.getItem('user_role') as Role | null;
+      if (savedRole && ['ADMIN', 'PRO', 'STANDARD'].includes(savedRole)) {
+        setUserRole(savedRole);
+      }
+    };
+
+    fetchUserRole();
+  }, []);
+
   const fetchData = useCallback(async () => {
     if (!currentAccount) return;
 
@@ -118,7 +171,15 @@ export default function AnalyticsDashboard() {
           Authorization: `Bearer ${currentAccount.accessToken}`,
         },
       });
-      if (!res.ok) throw new Error('Failed to fetch data');
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        if (res.status === 401 || errorData.code === 'NOT_AUTHENTICATED') {
+          throw new Error('アクセストークンが無効または期限切れです。アカウントを削除して再登録してください。');
+        }
+        throw new Error(errorData.error || 'データの取得に失敗しました');
+      }
+
       const json = await res.json();
       setData(json);
     } catch (err) {
@@ -228,17 +289,31 @@ export default function AnalyticsDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  const tabs: { id: TabType; label: string }[] = [
+  const allTabs: { id: TabType; label: string; permission?: keyof typeof permissions }[] = [
     { id: 'overview', label: '概要' },
     { id: 'compose', label: '投稿作成' },
-    { id: 'posts', label: '投稿分析' },
+    { id: 'bulk', label: 'AI一括生成', permission: 'aiBulkGeneration' },
+    { id: 'schedule', label: '予約投稿', permission: 'scheduledPosts' },
+    { id: 'recurring', label: '定期投稿', permission: 'recurringPosts' },
+    { id: 'autoreply', label: '自動リプライ', permission: 'recurringPosts' },
+    { id: 'drafts', label: '下書き', permission: 'drafts' },
+    { id: 'templates', label: 'テンプレート', permission: 'templates' },
+    { id: 'calendar', label: 'カレンダー' },
+    { id: 'posts', label: '投稿一覧' },
     { id: 'timing', label: '投稿時間' },
     { id: 'content', label: 'コンテンツ' },
     { id: 'keywords', label: 'キーワード' },
     { id: 'engagement', label: 'ファン分析' },
-    { id: 'insights', label: 'AIインサイト' },
-    { id: 'export', label: 'エクスポート' },
+    { id: 'insights', label: 'AIインサイト', permission: 'advancedAnalytics' },
+    { id: 'reports', label: 'レポート', permission: 'weeklyReports' },
+    { id: 'export', label: 'エクスポート', permission: 'exportData' },
   ];
+
+  // 権限に基づいてタブをフィルター
+  const tabs = allTabs.filter(tab => {
+    if (!tab.permission) return true;
+    return permissions[tab.permission];
+  });
 
   const analytics = data?.analytics;
   const stats = data?.aggregatedStats;
@@ -262,9 +337,9 @@ export default function AnalyticsDashboard() {
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-slate-900 mb-2">
-              Threads Analytics Pro
+              Threads Studio
             </h1>
-            <p className="text-slate-500">世界一の分析ツール</p>
+            <p className="text-slate-500">分析・投稿スタジオ</p>
           </div>
 
           <div className="space-y-4">
@@ -389,13 +464,64 @@ export default function AnalyticsDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900">
-                Threads Analytics Pro
+                Threads Studio
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                世界一の分析ツール
+                分析・投稿スタジオ
               </p>
             </div>
             <div className="flex items-center gap-3">
+              {/* Theme Toggle */}
+              <button
+                onClick={() => setTheme(actualTheme === 'dark' ? 'light' : 'dark')}
+                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title={actualTheme === 'dark' ? 'ライトモードに切替' : 'ダークモードに切替'}
+              >
+                {actualTheme === 'dark' ? (
+                  <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-slate-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Notification Bell */}
+              {permissions.notifications && (
+                <NotificationBell onClick={() => setShowNotifications(true)} />
+              )}
+
+              {/* Role Switcher (開発用) */}
+              <select
+                value={userRole}
+                onChange={(e) => {
+                  const newRole = e.target.value as Role;
+                  setUserRole(newRole);
+                  localStorage.setItem('user_role', newRole);
+                }}
+                className={`px-2 py-1 text-xs rounded-lg font-medium border-0 cursor-pointer ${
+                  userRole === 'ADMIN' ? 'bg-red-100 text-red-700' :
+                  userRole === 'PRO' ? 'bg-blue-100 text-blue-700' :
+                  'bg-slate-100 text-slate-700'
+                }`}
+              >
+                <option value="ADMIN">Admin</option>
+                <option value="PRO">Pro</option>
+                <option value="STANDARD">Standard</option>
+              </select>
+
+              {/* Admin Link */}
+              {permissions.adminPanel && (
+                <Link
+                  href="/admin"
+                  className="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                >
+                  管理
+                </Link>
+              )}
+
               <Link
                 href="/guide"
                 className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700"
@@ -432,26 +558,64 @@ export default function AnalyticsDashboard() {
           </div>
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-700">{error}</p>
+              {currentAccount && (
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => {
+                      removeAccount(currentAccount.id);
+                      setError(null);
+                    }}
+                    className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                  >
+                    このアカウントを削除
+                  </button>
+                  <button
+                    onClick={() => setShowAccountModal(true)}
+                    className="px-3 py-1 text-xs bg-violet-600 text-white rounded hover:bg-violet-700"
+                  >
+                    トークンを更新
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Tabs */}
-          <div className="mt-4 flex gap-1 overflow-x-auto">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'bg-violet-100 text-violet-700'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* Tabs - 2行表示 */}
+          <div className="mt-4 space-y-2">
+            {/* 1行目: メイン機能 */}
+            <div className="flex flex-wrap gap-1">
+              {tabs.filter(t => ['overview', 'compose', 'bulk', 'schedule', 'recurring', 'autoreply', 'drafts', 'templates'].includes(t.id)).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-violet-100 text-violet-700'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {/* 2行目: 分析・その他 */}
+            <div className="flex flex-wrap gap-1">
+              {tabs.filter(t => ['calendar', 'posts', 'timing', 'content', 'keywords', 'engagement', 'insights', 'reports', 'export'].includes(t.id)).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-cyan-100 text-cyan-700'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>
@@ -596,6 +760,11 @@ export default function AnalyticsDashboard() {
         </div>
       )}
 
+      {/* Notification Center */}
+      {showNotifications && (
+        <NotificationCenter onClose={() => setShowNotifications(false)} />
+      )}
+
       {/* Loading */}
       {loading && (
         <div className="fixed inset-0 bg-white/50 flex items-center justify-center z-20">
@@ -614,8 +783,11 @@ export default function AnalyticsDashboard() {
             {activeTab === 'compose' && currentAccount && (
               <div className="space-y-6">
                 <PostComposer
+                  key={`compose-${composerKey}`}
                   accessToken={currentAccount.accessToken}
                   onPostSuccess={fetchData}
+                  initialText={initialComposeText}
+                  onInitialTextUsed={() => setInitialComposeText('')}
                 />
               </div>
             )}
@@ -674,9 +846,106 @@ export default function AnalyticsDashboard() {
               </div>
             )}
 
-            {/* Posts Tab */}
+            {/* Bulk Generation Tab */}
+            {activeTab === 'bulk' && currentAccount && (
+              <div className="space-y-6">
+                <BulkPostGenerator
+                  accessToken={currentAccount.accessToken}
+                  embedded={true}
+                  onPostsScheduled={() => {
+                    fetchData();
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Schedule Tab */}
+            {activeTab === 'schedule' && currentAccount && (
+              <ScheduleManager
+                accessToken={currentAccount.accessToken}
+                accountId={currentAccount.id}
+                onRefresh={fetchData}
+              />
+            )}
+
+            {/* Drafts Tab */}
+            {activeTab === 'drafts' && currentAccount && (
+              <DraftManager
+                accessToken={currentAccount.accessToken}
+                onSelectDraft={(draft) => {
+                  // 下書きを選択したら投稿作成タブに移動
+                  setInitialComposeText(draft.text || '');
+                  setComposerKey(prev => prev + 1);
+                  setActiveTab('compose');
+                }}
+                maxDrafts={permissions.maxDrafts}
+              />
+            )}
+
+            {/* Templates Tab */}
+            {activeTab === 'templates' && (
+              <TemplateManager
+                onSelectTemplate={(template) => {
+                  // テンプレートを選択したら投稿作成タブに移動
+                  console.log('Template selected:', template);
+                  console.log('Template text:', template.text);
+                  const textToSet = template.text || '';
+                  console.log('Setting initialComposeText to:', textToSet);
+                  setInitialComposeText(textToSet);
+                  setComposerKey(prev => prev + 1);
+                  setActiveTab('compose');
+                }}
+                maxTemplates={permissions.maxTemplates}
+              />
+            )}
+
+            {/* Recurring Posts Tab */}
+            {activeTab === 'recurring' && currentAccount && (
+              <RecurringPostManager
+                accessToken={currentAccount.accessToken}
+                accountId={currentAccount.id}
+                onRefresh={fetchData}
+              />
+            )}
+
+            {/* Auto Reply Tab */}
+            {activeTab === 'autoreply' && currentAccount && (
+              <AutoReplyManager
+                accessToken={currentAccount.accessToken}
+                accountId={currentAccount.id}
+                onRefresh={fetchData}
+              />
+            )}
+
+            {/* Calendar Tab */}
+            {activeTab === 'calendar' && (
+              <PostCalendar
+                posts={data.threads.data.map(t => ({
+                  id: t.id,
+                  text: t.text,
+                  timestamp: t.timestamp,
+                  insights: t.insights,
+                }))}
+              />
+            )}
+
+            {/* Posts Tab - Analytics Table */}
             {activeTab === 'posts' && (
               <div className="space-y-6">
+                <PostsAnalyticsTable
+                  posts={data.threads.data.map((t) => ({
+                    id: t.id,
+                    text: t.text || '',
+                    timestamp: t.timestamp,
+                    media_type: t.media_type,
+                    likes: t.insights.likes,
+                    replies: t.insights.replies,
+                    reposts: t.insights.reposts,
+                    views: t.insights.views,
+                  }))}
+                />
+
+                {/* Top/Worst Posts Quick View */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white rounded-xl border border-slate-200 p-5">
                     <h3 className="text-sm font-semibold text-slate-700 mb-4">トップ投稿</h3>
@@ -717,26 +986,6 @@ export default function AnalyticsDashboard() {
                     </div>
                   </div>
                 </div>
-                <TopPostsList
-                  posts={data.threads.data.map((t) => ({
-                    id: t.id,
-                    content: t.text || '',
-                    publishedAt: t.timestamp,
-                    metrics: {
-                      impressions: t.insights.views,
-                      reach: 0,
-                      engagementRate: t.insights.views > 0
-                        ? ((t.insights.likes + t.insights.replies) / t.insights.views) * 100
-                        : 0,
-                      likes: t.insights.likes,
-                      comments: t.insights.replies,
-                      reposts: t.insights.reposts,
-                      quotes: t.insights.quotes,
-                      saves: 0,
-                    },
-                    mediaType: 'text',
-                  }))}
-                />
               </div>
             )}
 
@@ -841,6 +1090,20 @@ export default function AnalyticsDashboard() {
               </div>
             )}
 
+            {/* Reports Tab */}
+            {activeTab === 'reports' && (
+              <ReportGenerator
+                data={{
+                  profile: data.profile,
+                  aggregatedStats: stats,
+                  analytics: analytics,
+                  threads: data.threads,
+                }}
+                weeklyEnabled={permissions.weeklyReports}
+                monthlyEnabled={permissions.monthlyReports}
+              />
+            )}
+
             {/* Export Tab */}
             {activeTab === 'export' && (
               <div className="space-y-6">
@@ -870,7 +1133,7 @@ export default function AnalyticsDashboard() {
               </div>
             )}
           </>
-        ) : !loading && (
+        ) : !loading && !error && (
           <div className="text-center py-12">
             <p className="text-slate-500">データを読み込み中...</p>
           </div>
@@ -880,7 +1143,7 @@ export default function AnalyticsDashboard() {
       <footer className="border-t border-slate-200 bg-white mt-8">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between text-sm text-slate-500">
           <span>最終更新: {new Date().toLocaleString('ja-JP')}</span>
-          <span>Threads Analytics Pro</span>
+          <span>Threads Studio</span>
         </div>
       </footer>
     </div>

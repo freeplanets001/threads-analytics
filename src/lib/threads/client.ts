@@ -1,4 +1,4 @@
-// Threads API Client - 世界一の分析ツール用拡張版
+// Threads API Client - Threads Studio
 
 const THREADS_API_BASE = 'https://graph.threads.net/v1.0';
 

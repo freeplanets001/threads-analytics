@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Free プランは下書き3件まで
-    if (user.plan === 'free' && user.drafts.length >= 3) {
+    // Free プランは下書き3件まで（ADMINは除外）
+    if (user.plan === 'free' && user.role !== 'ADMIN' && user.drafts.length >= 3) {
       return NextResponse.json(
         { error: 'Free プランでは下書きは3件までです。プランをアップグレードしてください。' },
         { status: 403 }

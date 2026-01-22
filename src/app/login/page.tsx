@@ -43,7 +43,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-slate-900 mb-2">
-              Threads Analytics Pro
+              Threads Studio
             </h1>
             <p className="text-slate-500">ログインしてダッシュボードにアクセス</p>
           </div>

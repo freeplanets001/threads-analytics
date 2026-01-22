@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Threads Analytics Pro - 世界一のThreads分析ツール",
+  title: "Threads Studio - クリエイター向け分析・投稿スタジオ",
   description: "Threadsの投稿分析、最適な投稿時間の発見、AI支援による投稿作成など、Threads運用に必要な全ての機能を提供します。",
 };
 

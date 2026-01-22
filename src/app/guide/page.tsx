@@ -23,7 +23,7 @@ export default function GuidePage() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="text-xl font-bold text-slate-900">
-            Threads Analytics Pro
+            Threads Studio
           </Link>
           <div className="flex gap-3">
             <Link
@@ -69,10 +69,10 @@ export default function GuidePage() {
             {activeSection === 'intro' && (
               <div className="space-y-6">
                 <h1 className="text-3xl font-bold text-slate-900">
-                  Threads Analytics Pro へようこそ
+                  Threads Studio へようこそ
                 </h1>
                 <p className="text-lg text-slate-600">
-                  Threads Analytics Pro は、Meta社のThreadsアプリのための高機能な分析・投稿管理ツールです。
+                  Threads Studio は、Meta社のThreadsアプリのための高機能な分析・投稿管理ツールです。
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -111,7 +111,7 @@ export default function GuidePage() {
                   Threads API 設定ガイド
                 </h1>
                 <p className="text-slate-600">
-                  Threads Analytics Proを使用するには、Meta for Developersでアプリを作成し、
+                  Threads Studioを使用するには、Meta for Developersでアプリを作成し、
                   Threads APIのアクセス権限を取得する必要があります。
                 </p>
 

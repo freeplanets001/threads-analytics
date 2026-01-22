@@ -19,27 +19,53 @@ export function useAccountManager() {
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load accounts from localStorage
+  // Load accounts from localStorage and sync to database
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const savedAccounts = localStorage.getItem(STORAGE_KEY);
-    const savedCurrentId = localStorage.getItem(CURRENT_ACCOUNT_KEY);
+    const loadAndSync = async () => {
+      const savedAccounts = localStorage.getItem(STORAGE_KEY);
+      const savedCurrentId = localStorage.getItem(CURRENT_ACCOUNT_KEY);
 
-    if (savedAccounts) {
-      try {
-        const parsed = JSON.parse(savedAccounts);
-        setAccounts(parsed);
-      } catch {
-        setAccounts([]);
+      let localAccounts: Account[] = [];
+      if (savedAccounts) {
+        try {
+          localAccounts = JSON.parse(savedAccounts);
+          setAccounts(localAccounts);
+        } catch {
+          setAccounts([]);
+        }
       }
-    }
 
-    if (savedCurrentId) {
-      setCurrentAccountId(savedCurrentId);
-    }
+      if (savedCurrentId) {
+        setCurrentAccountId(savedCurrentId);
+      }
 
-    setIsLoading(false);
+      // localStorageのアカウントをデータベースに同期
+      if (localAccounts.length > 0) {
+        for (const account of localAccounts) {
+          try {
+            await fetch('/api/accounts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                threadsUserId: account.id,
+                username: account.username,
+                name: account.name,
+                profilePicture: account.profilePicture,
+                accessToken: account.accessToken,
+              }),
+            });
+          } catch (err) {
+            console.log('Failed to sync account to database', err);
+          }
+        }
+      }
+
+      setIsLoading(false);
+    };
+
+    loadAndSync();
   }, []);
 
   // Save accounts to localStorage
@@ -71,6 +97,23 @@ export function useAccountManager() {
         accessToken,
         addedAt: new Date().toISOString(),
       };
+
+      // データベースにも保存
+      try {
+        await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            threadsUserId: data.user.id,
+            username: data.user.username,
+            name: data.user.name,
+            profilePicture: data.user.threads_profile_picture_url,
+            accessToken,
+          }),
+        });
+      } catch (dbErr) {
+        console.log('Failed to save to database, continuing with localStorage', dbErr);
+      }
 
       // Check if account already exists
       const existingIndex = accounts.findIndex(a => a.id === newAccount.id);

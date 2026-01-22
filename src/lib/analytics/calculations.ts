@@ -1,4 +1,4 @@
-// 世界一のThreads分析ツール - 分析ロジック
+// Threads Studio - 分析ロジック
 
 import { format, parseISO, getDay, getHours, differenceInDays } from 'date-fns';
 import { ja } from 'date-fns/locale';

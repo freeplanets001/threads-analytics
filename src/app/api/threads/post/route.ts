@@ -26,13 +26,22 @@ export async function POST(request: NextRequest) {
     const body: PostRequest = await request.json();
     const client = new ThreadsAPIClient(accessToken);
 
-    // 投稿制限を確認
-    const limit = await client.getPublishingLimit();
-    if (limit.quota_usage >= limit.config.quota_total) {
-      return NextResponse.json(
-        { error: '投稿制限に達しています。しばらく待ってから再試行してください。', code: 'RATE_LIMIT' },
-        { status: 429 }
-      );
+    // 投稿制限を確認（エラーでも投稿は試みる）
+    let remainingQuota: number | null = null;
+    try {
+      const limit = await client.getPublishingLimit();
+      if (limit?.config?.quota_total && limit?.quota_usage !== undefined) {
+        remainingQuota = limit.config.quota_total - limit.quota_usage;
+        if (limit.quota_usage >= limit.config.quota_total) {
+          return NextResponse.json(
+            { error: '投稿制限に達しています。しばらく待ってから再試行してください。', code: 'RATE_LIMIT' },
+            { status: 429 }
+          );
+        }
+      }
+    } catch (limitError) {
+      console.warn('Could not check publishing limit:', limitError);
+      // 制限チェックに失敗しても投稿は試みる
     }
 
     let result: { id: string } | { ids: string[] };
@@ -83,7 +92,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       ...result,
-      remainingQuota: limit.config.quota_total - limit.quota_usage - 1,
+      remainingQuota: remainingQuota !== null ? remainingQuota - 1 : null,
     });
   } catch (err) {
     console.error('Post error:', err);
@@ -111,17 +120,26 @@ export async function GET(request: NextRequest) {
     const client = new ThreadsAPIClient(accessToken);
     const limit = await client.getPublishingLimit();
 
+    // 安全にアクセス
+    const quotaUsage = limit?.quota_usage ?? 0;
+    const quotaTotal = limit?.config?.quota_total ?? 250;
+    const quotaDuration = limit?.config?.quota_duration ?? 86400;
+
     return NextResponse.json({
-      used: limit.quota_usage,
-      total: limit.config.quota_total,
-      remaining: limit.config.quota_total - limit.quota_usage,
-      resetDuration: limit.config.quota_duration,
+      used: quotaUsage,
+      total: quotaTotal,
+      remaining: quotaTotal - quotaUsage,
+      resetDuration: quotaDuration,
     });
   } catch (err) {
     console.error('Get limit error:', err);
-    return NextResponse.json(
-      { error: 'Failed to get publishing limit' },
-      { status: 500 }
-    );
+    // デフォルト値を返す（APIエラーでもUIが動作するように）
+    return NextResponse.json({
+      used: 0,
+      total: 250,
+      remaining: 250,
+      resetDuration: 86400,
+      error: 'Could not fetch exact limit',
+    });
   }
 }
