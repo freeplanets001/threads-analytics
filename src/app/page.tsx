@@ -5,6 +5,8 @@ import {
   KPICard,
   TopPostsList,
 } from '@/components/analytics';
+import { PostComposer } from '@/components/PostComposer';
+import Link from 'next/link';
 import {
   PostingHoursChart,
   PostingDaysChart,
@@ -22,7 +24,7 @@ import {
 import { useAccountManager } from '@/hooks/useAccountManager';
 import type { AnalyticsResult, HashtagAnalysis, KeywordAnalysis, HeatmapData, AIInsight, DailyTrend } from '@/lib/analytics/calculations';
 
-type TabType = 'overview' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'export';
+type TabType = 'overview' | 'compose' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'export';
 
 interface ThreadWithInsights {
   id: string;
@@ -228,6 +230,7 @@ export default function AnalyticsDashboard() {
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: '概要' },
+    { id: 'compose', label: '投稿作成' },
     { id: 'posts', label: '投稿分析' },
     { id: 'timing', label: '投稿時間' },
     { id: 'content', label: 'コンテンツ' },
@@ -393,6 +396,13 @@ export default function AnalyticsDashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <Link
+                href="/guide"
+                className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700"
+              >
+                ガイド
+              </Link>
+
               {/* Account Switcher */}
               <button
                 onClick={() => setShowAccountModal(true)}
@@ -600,6 +610,16 @@ export default function AnalyticsDashboard() {
       <main className="max-w-7xl mx-auto px-4 py-6">
         {data && analytics && stats ? (
           <>
+            {/* Compose Tab */}
+            {activeTab === 'compose' && currentAccount && (
+              <div className="space-y-6">
+                <PostComposer
+                  accessToken={currentAccount.accessToken}
+                  onPostSuccess={fetchData}
+                />
+              </div>
+            )}
+
             {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="space-y-6">

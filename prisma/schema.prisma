@@ -1,0 +1,105 @@
+// Threads Analytics Pro - Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ユーザーモデル
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // サブスクリプション
+  plan          String    @default("free") // free, pro, business
+  planExpiresAt DateTime?
+  stripeCustomerId String?
+
+  // 関連
+  threadsAccounts ThreadsAccount[]
+  drafts          Draft[]
+  scheduledPosts  ScheduledPost[]
+
+  @@map("users")
+}
+
+// Threadsアカウント（1ユーザー複数アカウント対応）
+model ThreadsAccount {
+  id            String   @id @default(cuid())
+  userId        String
+  threadsUserId String   @unique
+  username      String
+  name          String?
+  profilePicture String?
+  accessToken   String
+  tokenExpiresAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  drafts        Draft[]
+  scheduledPosts ScheduledPost[]
+
+  @@map("threads_accounts")
+}
+
+// 下書き
+model Draft {
+  id            String   @id @default(cuid())
+  userId        String
+  accountId     String
+
+  // 投稿内容
+  type          String   // text, image, video, carousel, thread
+  text          String?
+  mediaUrls     String?  // JSON array
+  threadPosts   String?  // JSON array for thread posts
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       ThreadsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("drafts")
+}
+
+// 予約投稿
+model ScheduledPost {
+  id            String   @id @default(cuid())
+  userId        String
+  accountId     String
+
+  // 投稿内容
+  type          String   // text, image, video, carousel, thread
+  text          String?
+  mediaUrls     String?  // JSON array
+  threadPosts   String?  // JSON array for thread posts
+
+  // スケジュール
+  scheduledAt   DateTime
+  status        String   @default("pending") // pending, processing, completed, failed
+  errorMessage  String?
+  postedId      String?  // 投稿後のID
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       ThreadsAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("scheduled_posts")
+}
+
+// プランの機能制限
+// free: 1アカウント、下書き3件、予約投稿なし
+// pro: 3アカウント、下書き無制限、予約投稿10件/月
+// business: 無制限アカウント、下書き無制限、予約投稿無制限
