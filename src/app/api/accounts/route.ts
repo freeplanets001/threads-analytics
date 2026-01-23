@@ -58,6 +58,35 @@ export async function POST(request: NextRequest) {
       where: { threadsUserId },
     });
 
+    // 新規アカウントの場合、プラン別のアカウント数制限をチェック
+    if (!existingAccount) {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        include: {
+          threadsAccounts: true,
+        },
+      });
+
+      if (user && user.role !== 'ADMIN') {
+        const plan = user.plan || 'free';
+        const accountLimits: Record<string, number> = {
+          free: 1,
+          standard: 3,
+          pro: 10,
+        };
+        const maxAccounts = accountLimits[plan] || 1;
+
+        if (user.threadsAccounts.length >= maxAccounts) {
+          return NextResponse.json(
+            {
+              error: `${plan === 'free' ? 'Free' : plan === 'standard' ? 'Standard' : 'Pro'} プランでは最大${maxAccounts}アカウントまでです。${plan !== 'pro' ? 'アップグレードするとアカウント数を増やせます。' : ''}`,
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     let account;
     if (existingAccount) {
       // 既存のアカウントを更新

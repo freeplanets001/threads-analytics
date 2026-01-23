@@ -21,7 +21,8 @@ enum Role {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  password      String
+  emailVerified DateTime?
+  password      String?   // OAuth認証時はnull
   name          String?
   image         String?
   createdAt     DateTime  @default(now())
@@ -30,13 +31,23 @@ model User {
   // ロール（Admin, Pro, Standard）
   role          Role      @default(STANDARD)
 
-  // サブスクリプション（後方互換性のため残す）
-  plan          String    @default("free")
+  // サブスクリプション
+  plan          String    @default("free")  // free, standard, pro
   planExpiresAt DateTime?
-  stripeCustomerId String?
+  stripeCustomerId      String?  @unique
+  stripeSubscriptionId  String?
+  stripePriceId         String?
 
   // 設定
   settings      String?   // JSON: ダークモード、通知設定など
+
+  // AI使用量トラッキング
+  aiUsageCount     Int       @default(0)
+  aiUsageResetDate DateTime?
+
+  // OAuth関連
+  accounts      Account[]
+  sessions      Session[]
 
   // 関連
   threadsAccounts ThreadsAccount[]
@@ -47,6 +58,49 @@ model User {
   notifications   Notification[]
 
   @@map("users")
+}
+
+// OAuth認証用アカウント（NextAuth v5）
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// セッション（NextAuth v5）
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// メール認証トークン（NextAuth v5）
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 // Threadsアカウント（1ユーザー複数アカウント対応）

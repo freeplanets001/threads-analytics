@@ -62,20 +62,60 @@ export async function exchangeCodeForToken(
 export async function exchangeForLongLivedToken(
   shortLivedToken: string
 ): Promise<ThreadsLongLivedTokenResponse> {
+  if (!process.env.THREADS_APP_SECRET) {
+    throw new Error('THREADS_APP_SECRET is not configured');
+  }
+
+  return exchangeForLongLivedTokenWithSecret(shortLivedToken, process.env.THREADS_APP_SECRET);
+}
+
+// 短期トークンを長期トークンに交換（App Secretを引数で受け取る）
+export async function exchangeForLongLivedTokenWithSecret(
+  shortLivedToken: string,
+  appSecret: string
+): Promise<ThreadsLongLivedTokenResponse> {
+  if (!appSecret) {
+    throw new Error('App Secretが必要です');
+  }
+
   const params = new URLSearchParams({
     grant_type: 'th_exchange_token',
-    client_secret: process.env.THREADS_APP_SECRET || '',
+    client_secret: appSecret,
     access_token: shortLivedToken,
   });
 
   const response = await fetch(`${THREADS_LONG_LIVED_TOKEN_URL}?${params.toString()}`);
+  const responseText = await response.text();
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error_message || 'Failed to exchange for long-lived token');
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    throw new Error(`Invalid API response: ${responseText.substring(0, 200)}`);
   }
 
-  return response.json();
+  if (!response.ok) {
+    // 詳細なエラー情報を構築
+    const errorCode = data.error?.code || data.error_code || '';
+    const errorType = data.error?.type || data.error_type || '';
+    const errorMessage = data.error?.message || data.error_message || 'Unknown error';
+
+    // よくあるエラーに対する日本語の説明
+    let hint = '';
+    if (errorMessage.includes('Invalid OAuth access token') || errorMessage.includes('expired')) {
+      hint = 'トークンが無効または期限切れです。';
+    } else if (errorMessage.includes('already been used')) {
+      hint = 'このトークンは既に使用されています。新しいトークンを取得してください。';
+    } else if (errorCode === '190') {
+      hint = 'トークンが無効です。Graph API Explorerから新しいトークンを取得してください。';
+    } else if (errorMessage.includes('Invalid parameter')) {
+      hint = 'App Secretが正しくないか、トークンが既に長期トークンの可能性があります。';
+    }
+
+    throw new Error(`${errorMessage}${hint ? ` (${hint})` : ''} [${errorType || errorCode || response.status}]`);
+  }
+
+  return data;
 }
 
 // 長期トークンをリフレッシュ

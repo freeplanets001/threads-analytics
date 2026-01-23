@@ -12,6 +12,7 @@ interface GeneratedPost {
 interface BulkPostGeneratorProps {
   apiKey?: string | null;
   accessToken: string;
+  accountId: string;
   onClose?: () => void;
   onOpenSettings?: () => void;
   onSchedulePost?: (post: { text: string; scheduledTime: Date }) => void;
@@ -60,6 +61,7 @@ function Icon({ name, className = '' }: { name: string; className?: string }) {
 export function BulkPostGenerator({
   apiKey: initialApiKey,
   accessToken,
+  accountId,
   onClose,
   onOpenSettings,
   onSchedulePost,
@@ -72,11 +74,18 @@ export function BulkPostGenerator({
   const [localApiKey, setLocalApiKey] = useState<string>('');
   const [showApiKeyInput, setShowApiKeyInput] = useState(false);
 
-  // localStorage からAPIキーを読み込み
+  // カスタムプロンプト
+  const [customPrompt, setCustomPrompt] = useState<string | null>(null);
+
+  // localStorage からAPIキーとカスタムプロンプトを読み込み
   useEffect(() => {
     const savedKey = localStorage.getItem('gemini_api_key');
+    const savedPrompt = localStorage.getItem('ai_custom_prompt');
     if (savedKey) {
       setLocalApiKey(savedKey);
+    }
+    if (savedPrompt) {
+      setCustomPrompt(savedPrompt);
     }
   }, []);
 
@@ -141,23 +150,41 @@ export function BulkPostGenerator({
       for (let i = 0; i < postCount; i++) {
         setCurrentGenerating(i + 1);
 
-        const prompt = `
-以下の条件でThreads用の投稿を1つ生成してください：
+        // カスタムプロンプトがある場合、トーンの指示を上書き
+        const hasCustomPrompt = customPrompt && customPrompt.trim().length > 0;
 
-トピック: ${topic}
-トーン: ${toneDescriptions[toneStyle]}
-${includeEmoji ? '絵文字を適度に使用' : '絵文字は使用しない'}
-${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュタグは含めない'}
-文字数: ${maxLength}文字以内
+        // カスタムプロンプトに「です、ます」や「だ、である」などの口調指定があるかチェック
+        const hasCustomTone = hasCustomPrompt && (
+          customPrompt.includes('です') ||
+          customPrompt.includes('ます') ||
+          customPrompt.includes('である') ||
+          customPrompt.includes('口調') ||
+          customPrompt.includes('語尾')
+        );
 
-重要ルール:
-- マークダウン記号（###、**、*など）は絶対に使用しない
-- 改行は1-2回まで
-- 投稿番号${i + 1}/${postCount}として、他の投稿と内容が被らないようにする
-- 読者が共感・反応したくなる内容にする
-- 冒頭で興味を引く
+        const prompt = `あなたはThreads/SNS用の投稿を作成するAIです。
 
-投稿テキストのみを出力（説明や番号は不要）:`;
+【投稿条件】
+- トピック: ${topic}
+${hasCustomTone ? '' : `- 基本トーン: ${toneDescriptions[toneStyle]}`}
+- 文字数: ${maxLength}文字以内
+- 絵文字: ${includeEmoji ? '適度に使用可（1-3個程度）' : '【禁止】絵文字は一切使用しないこと'}
+- ハッシュタグ: ${includeHashtags ? '最後に関連ハッシュタグを2-3個含める' : '【禁止】ハッシュタグ（#）は一切使用しないこと'}
+
+【基本ルール】
+1. マークダウン記号（###、**、*、-など）は使用禁止
+2. 改行は最大2回まで
+3. ${postCount}件中の${i + 1}件目：他と被らないユニークな視点で
+4. 共感性のある内容にする
+5. 冒頭で興味を引く
+6. 投稿文のみを出力（説明や番号は不要）
+
+${hasCustomPrompt ? `【★最重要★ユーザーの指示（これを最優先で守ること）】
+${customPrompt}
+
+上記のユーザー指示を必ず守ってください。特に口調・文体に関する指示がある場合は、それに従ってください。` : ''}
+
+Threads用の投稿を1つだけ生成してください。投稿文のみを出力:`;
 
         const res = await fetch('/api/ai/generate', {
           method: 'POST',
@@ -165,7 +192,11 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
           body: JSON.stringify({
             type: 'text',
             prompt,
-            options: { maxLength, tone: toneStyle },
+            options: {
+              maxLength,
+              tone: toneStyle,
+              customPrompt: customPrompt || undefined,
+            },
             apiKey: effectiveApiKey,
           }),
         });
@@ -173,9 +204,26 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
         const data = await res.json();
 
         if (res.ok && data.text) {
+          let processedText = data.text.trim();
+
+          // ハッシュタグを含めない設定の場合、後処理で削除
+          if (!includeHashtags) {
+            // ハッシュタグを削除（#で始まる単語、全角#も含む）
+            processedText = processedText.replace(/[#＃][^\s#＃]+/g, '').trim();
+            // 連続する空白や改行を整理
+            processedText = processedText.replace(/\n{3,}/g, '\n\n').replace(/  +/g, ' ').trim();
+          }
+
+          // 絵文字を含めない設定の場合、後処理で削除
+          if (!includeEmoji) {
+            // 絵文字を削除（広範なUnicode絵文字パターン）
+            processedText = processedText.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
+            processedText = processedText.replace(/  +/g, ' ').trim();
+          }
+
           posts.push({
             id: Date.now().toString() + i,
-            text: data.text,
+            text: processedText,
             scheduledTime: null,
             status: 'pending',
           });
@@ -219,17 +267,54 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
     const pattern = SCHEDULE_PATTERNS.find(p => p.id === schedulePattern);
     if (!pattern) return;
 
+    const now = new Date();
+    const minTime = new Date(now.getTime() + 10 * 60 * 1000); // 最低10分後
     const start = new Date(startDate);
-    const updatedPosts = generatedPosts.map((post, index) => {
+
+    // 開始日が今日より前の場合は今日に設定
+    if (start < new Date(now.toDateString())) {
+      start.setTime(new Date(now.toDateString()).getTime());
+    }
+
+    let currentDayOffset = 0;
+    let currentTimeIndex = 0;
+
+    const updatedPosts = generatedPosts.map((post) => {
       if (post.status === 'error') return post;
 
-      const dayOffset = Math.floor(index / pattern.times.length) % spreadDays;
-      const timeIndex = index % pattern.times.length;
-      const hour = pattern.times[timeIndex];
+      let scheduledTime: Date;
+      let attempts = 0;
+      const maxAttempts = spreadDays * pattern.times.length * 2;
 
-      const scheduledTime = new Date(start);
-      scheduledTime.setDate(scheduledTime.getDate() + dayOffset);
-      scheduledTime.setHours(hour, Math.floor(Math.random() * 30), 0, 0);
+      // 未来の時間が見つかるまでループ
+      do {
+        const dayOffset = currentDayOffset;
+        const timeIndex = currentTimeIndex % pattern.times.length;
+        const hour = pattern.times[timeIndex];
+
+        scheduledTime = new Date(start);
+        scheduledTime.setDate(scheduledTime.getDate() + dayOffset);
+        scheduledTime.setHours(hour, Math.floor(Math.random() * 30), 0, 0);
+
+        // 次の時間スロットへ
+        currentTimeIndex++;
+        if (currentTimeIndex >= pattern.times.length) {
+          currentTimeIndex = 0;
+          currentDayOffset++;
+          if (currentDayOffset >= spreadDays) {
+            currentDayOffset = 0; // ループ
+          }
+        }
+
+        attempts++;
+        if (attempts > maxAttempts) {
+          // 全スロットが過去の場合、明日から開始
+          start.setDate(start.getDate() + 1);
+          currentDayOffset = 0;
+          currentTimeIndex = 0;
+          attempts = 0;
+        }
+      } while (scheduledTime < minTime);
 
       return { ...post, scheduledTime, status: 'scheduled' as const };
     });
@@ -237,28 +322,92 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
     setGeneratedPosts(updatedPosts);
   };
 
+  // スケジューリング中の状態
+  const [scheduling, setScheduling] = useState(false);
+  const [schedulingProgress, setSchedulingProgress] = useState(0);
+  const [schedulingErrors, setSchedulingErrors] = useState<string[]>([]);
+
   // スケジュール投稿を実行
   const handleScheduleAll = async () => {
-    const scheduledPosts = generatedPosts.filter(p => p.status === 'scheduled' && p.scheduledTime);
+    const postsToSchedule = generatedPosts.filter(p => p.status === 'scheduled' && p.scheduledTime);
 
-    for (const post of scheduledPosts) {
-      if (post.scheduledTime && onSchedulePost) {
-        onSchedulePost({ text: post.text, scheduledTime: post.scheduledTime });
+    if (postsToSchedule.length === 0) {
+      setError('スケジュールする投稿がありません');
+      return;
+    }
+
+    setScheduling(true);
+    setSchedulingProgress(0);
+    setSchedulingErrors([]);
+    const errors: string[] = [];
+    let successCount = 0;
+
+    for (let i = 0; i < postsToSchedule.length; i++) {
+      const post = postsToSchedule[i];
+      if (!post.scheduledTime) continue;
+
+      try {
+        const res = await fetch('/api/scheduled', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            accountId,
+            type: 'text',
+            text: post.text,
+            scheduledAt: post.scheduledTime.toISOString(),
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errors.push(`投稿${i + 1}: ${data.error || '登録失敗'}`);
+          // 投稿のステータスをエラーに更新
+          setGeneratedPosts(posts =>
+            posts.map(p => p.id === post.id ? { ...p, status: 'error' as const } : p)
+          );
+        } else {
+          successCount++;
+          // 投稿のステータスを完了に更新
+          setGeneratedPosts(posts =>
+            posts.map(p => p.id === post.id ? { ...p, status: 'posted' as const } : p)
+          );
+        }
+      } catch (err) {
+        errors.push(`投稿${i + 1}: ネットワークエラー`);
       }
+
+      setSchedulingProgress(i + 1);
+      // レート制限対策
+      await new Promise(r => setTimeout(r, 300));
     }
 
-    // 完了コールバック
-    if (onPostsScheduled) {
-      onPostsScheduled();
-    }
-    if (onClose) {
-      onClose();
-    } else {
-      // 埋め込みモードの場合はリセット
-      setStep('config');
-      setGeneratedPosts([]);
-      setSelectedTheme(null);
-      setCustomTopic('');
+    setSchedulingErrors(errors);
+    setScheduling(false);
+
+    if (errors.length === 0) {
+      // 全て成功した場合
+      if (onPostsScheduled) {
+        onPostsScheduled();
+      }
+      if (onClose) {
+        onClose();
+      } else {
+        // 埋め込みモードの場合は成功メッセージを表示してリセット
+        alert(`${successCount}件の投稿を予約しました！`);
+        setStep('config');
+        setGeneratedPosts([]);
+        setSelectedTheme(null);
+        setCustomTopic('');
+      }
+    } else if (successCount > 0) {
+      // 一部成功した場合
+      alert(`${successCount}件成功、${errors.length}件失敗しました。`);
+      if (onPostsScheduled) {
+        onPostsScheduled();
+      }
     }
   };
 
@@ -336,6 +485,22 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
 
         {/* コンテンツ */}
         <div className="flex-1 overflow-y-auto p-6">
+          {/* カスタムプロンプト表示 */}
+          {step === 'config' && customPrompt && (
+            <div className="mb-4 p-3 bg-violet-50 border border-violet-200 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-violet-600 text-lg">✨</span>
+                  <span className="text-sm font-medium text-violet-800">カスタムプロンプト適用中</span>
+                </div>
+                <span className="text-xs text-violet-600">{customPrompt.length}文字</span>
+              </div>
+              <p className="text-xs text-violet-600 mt-1 line-clamp-2">
+                {customPrompt.substring(0, 100)}...
+              </p>
+            </div>
+          )}
+
           {/* API設定セクション */}
           {(showApiKeyInput || !effectiveApiKey) && step === 'config' && (
             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
@@ -643,6 +808,18 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
                   </div>
                 </div>
               )}
+
+              {/* スケジューリングエラー表示 */}
+              {schedulingErrors.length > 0 && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <h4 className="font-medium text-red-800 mb-2">一部の投稿の登録に失敗しました</h4>
+                  <ul className="text-sm text-red-600 space-y-1">
+                    {schedulingErrors.map((err, i) => (
+                      <li key={i}>• {err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -684,17 +861,32 @@ ${includeHashtags ? '関連ハッシュタグを2-3個含める' : 'ハッシュ
             <>
               <button
                 onClick={() => setStep('review')}
-                className="px-4 py-2 text-slate-600 hover:text-slate-900"
+                disabled={scheduling}
+                className="px-4 py-2 text-slate-600 hover:text-slate-900 disabled:opacity-50"
               >
                 ← 確認に戻る
               </button>
-              <button
-                onClick={handleScheduleAll}
-                disabled={!generatedPosts.some(p => p.scheduledTime)}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
-              >
-                スケジュール投稿を登録
-              </button>
+              <div className="flex items-center gap-3">
+                {scheduling && (
+                  <span className="text-sm text-slate-500">
+                    {schedulingProgress}/{generatedPosts.filter(p => p.status === 'scheduled').length}件登録中...
+                  </span>
+                )}
+                <button
+                  onClick={handleScheduleAll}
+                  disabled={!generatedPosts.some(p => p.scheduledTime) || scheduling}
+                  className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {scheduling ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      登録中...
+                    </>
+                  ) : (
+                    'スケジュール投稿を登録'
+                  )}
+                </button>
+              </div>
             </>
           )}
         </div>

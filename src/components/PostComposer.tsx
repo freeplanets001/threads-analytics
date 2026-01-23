@@ -22,10 +22,8 @@ interface ThreadPost {
 }
 
 export function PostComposer({ accessToken, onPostSuccess, initialText, onInitialTextUsed }: PostComposerProps) {
-  console.log('PostComposer render - initialText prop:', initialText);
   const [postType, setPostType] = useState<PostType>('text');
   const [text, setText] = useState(initialText || '');
-  console.log('PostComposer render - text state:', text);
   const [imageUrl, setImageUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [carouselItems, setCarouselItems] = useState<Array<{ type: 'IMAGE' | 'VIDEO'; url: string }>>([]);
@@ -73,9 +71,7 @@ export function PostComposer({ accessToken, onPostSuccess, initialText, onInitia
 
   // 初期テキストが渡された場合にセット
   useEffect(() => {
-    console.log('PostComposer useEffect - initialText:', initialText);
     if (initialText && initialText.length > 0) {
-      console.log('PostComposer setting text to:', initialText);
       setText(initialText);
       // コールバックを呼んで親のstateをクリア
       if (onInitialTextUsedRef.current) {
@@ -83,11 +79,6 @@ export function PostComposer({ accessToken, onPostSuccess, initialText, onInitia
       }
     }
   }, [initialText]);
-
-  // デバッグ: コンポーネントマウント時
-  useEffect(() => {
-    console.log('PostComposer mounted with initialText:', initialText);
-  }, []);
 
   const handlePost = async () => {
     setPosting(true);

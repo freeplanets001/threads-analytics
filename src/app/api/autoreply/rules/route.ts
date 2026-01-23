@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, isDatabaseAvailable } from '@/lib/db';
+import { auth } from '@/lib/auth';
 
 // GET: ルール一覧取得
 export async function GET(request: NextRequest) {
@@ -51,6 +52,28 @@ export async function POST(request: NextRequest) {
   try {
     if (!isDatabaseAvailable() || !prisma) {
       return NextResponse.json({ error: 'Database not available' }, { status: 503 });
+    }
+
+    // 認証チェック
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // プラン制限チェック（自動リプライはProプランのみ）
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (user.role !== 'ADMIN' && user.plan !== 'pro') {
+      return NextResponse.json(
+        { error: '自動リプライ機能は Pro プラン限定です。アップグレードしてください。' },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();

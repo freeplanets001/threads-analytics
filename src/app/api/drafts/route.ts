@@ -53,10 +53,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Free プランは下書き3件まで（ADMINは除外）
-    if (user.plan === 'free' && user.role !== 'ADMIN' && user.drafts.length >= 3) {
+    // プラン別下書き制限（Free: 5件、Standard/Pro: 無制限）
+    if (user.role !== 'ADMIN' && user.plan === 'free' && user.drafts.length >= 5) {
       return NextResponse.json(
-        { error: 'Free プランでは下書きは3件までです。プランをアップグレードしてください。' },
+        { error: 'Free プランでは下書きは5件までです。Standard プラン以上で無制限になります。' },
         { status: 403 }
       );
     }

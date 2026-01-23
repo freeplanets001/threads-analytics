@@ -1,10 +1,26 @@
 import type { NextAuthConfig } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import Google from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
 import { prisma, isDatabaseAvailable } from '@/lib/db';
+import { PrismaAdapter } from '@auth/prisma-adapter';
 
 export const authConfig: NextAuthConfig = {
+  adapter: prisma ? PrismaAdapter(prisma) : undefined,
   providers: [
+    // Google OAuth
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+      authorization: {
+        params: {
+          prompt: 'consent',
+          access_type: 'offline',
+          response_type: 'code',
+        },
+      },
+    }),
+    // Email/Password認証（後方互換性のため残す）
     Credentials({
       name: 'credentials',
       credentials: {
@@ -26,7 +42,7 @@ export const authConfig: NextAuthConfig = {
           where: { email: credentials.email as string },
         });
 
-        if (!user) {
+        if (!user || !user.password) {
           return null;
         }
 
@@ -51,22 +67,73 @@ export const authConfig: NextAuthConfig = {
   pages: {
     signIn: '/login',
     newUser: '/register',
+    error: '/login',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      // Google認証の場合、初回ログイン時にSTANDARDロールを設定
+      if (account?.provider === 'google' && prisma) {
+        const existingUser = await prisma.user.findUnique({
+          where: { email: user.email! },
+        });
+
+        if (!existingUser) {
+          // 新規ユーザーはSTANDARDロールで作成される（デフォルト）
+          return true;
+        }
+      }
+      return true;
+    },
+    async jwt({ token, user, account, trigger }) {
       if (user) {
         token.id = user.id;
       }
+
+      // ユーザー情報の更新時（サブスク変更など）
+      if (trigger === 'update' && prisma && token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true, plan: true, planExpiresAt: true },
+        });
+        if (dbUser) {
+          token.role = dbUser.role;
+          token.plan = dbUser.plan;
+          token.planExpiresAt = dbUser.planExpiresAt?.toISOString();
+        }
+      }
+
+      // 初回サインイン時にロールとプランを取得
+      if (account && prisma && token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true, plan: true, planExpiresAt: true },
+        });
+        if (dbUser) {
+          token.role = dbUser.role;
+          token.plan = dbUser.plan;
+          token.planExpiresAt = dbUser.planExpiresAt?.toISOString();
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         session.user.id = token.id as string;
+        session.user.role = token.role as string;
+        session.user.plan = token.plan as string;
+        session.user.planExpiresAt = token.planExpiresAt as string | undefined;
       }
       return session;
     },
   },
   session: {
     strategy: 'jwt',
+  },
+  events: {
+    async createUser({ user }) {
+      // 新規ユーザー作成時のログ
+      console.log('New user created:', user.email);
+    },
   },
 };

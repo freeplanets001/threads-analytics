@@ -44,6 +44,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // プラン制限チェック（定期投稿はProプランのみ）
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (user.role !== 'ADMIN' && user.plan !== 'pro') {
+      return NextResponse.json(
+        { error: '定期投稿機能は Pro プラン限定です。アップグレードしてください。' },
+        { status: 403 }
+      );
+    }
+
     const {
       accountId,
       text,

@@ -57,20 +57,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Free プランは予約投稿不可（ADMINは除外）
-    if (user.plan === 'free' && user.role !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Free プランでは予約投稿は利用できません。プランをアップグレードしてください。' },
-        { status: 403 }
-      );
-    }
+    // プラン別制限（ADMINは除外）
+    if (user.role !== 'ADMIN') {
+      // Free プランは予約投稿不可
+      if (user.plan === 'free') {
+        return NextResponse.json(
+          { error: 'Free プランでは予約投稿は利用できません。Standard プラン以上にアップグレードしてください。' },
+          { status: 403 }
+        );
+      }
 
-    // Pro プランは月10件まで（ADMINは除外）
-    if (user.plan === 'pro' && user.role !== 'ADMIN' && user.scheduledPosts.length >= 10) {
-      return NextResponse.json(
-        { error: 'Pro プランでは予約投稿は月10件までです。Business プランにアップグレードしてください。' },
-        { status: 403 }
-      );
+      // Standard プランは月20件まで
+      if (user.plan === 'standard' && user.scheduledPosts.length >= 20) {
+        return NextResponse.json(
+          { error: 'Standard プランでは予約投稿は月20件までです。Pro プランにアップグレードすると無制限になります。' },
+          { status: 403 }
+        );
+      }
+      // Pro プランは無制限
     }
 
     // 予約時間のバリデーション（最低5分後）

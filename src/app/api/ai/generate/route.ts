@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
+import { prisma, isDatabaseAvailable } from '@/lib/db';
+
+// プラン別AI生成制限
+const AI_LIMITS: Record<string, number> = {
+  free: 10,
+  standard: 30,
+  pro: 100,
+};
 
 // テキスト生成・画像生成（Gemini API対応）
 export async function POST(request: NextRequest) {
   try {
+    // 認証チェック
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { type, prompt, context, postType, options, apiKey } = await request.json();
 
     if (!apiKey) {
@@ -10,6 +25,45 @@ export async function POST(request: NextRequest) {
         { error: 'AI APIキーが設定されていません。設定画面でGemini APIキーを入力してください。' },
         { status: 400 }
       );
+    }
+
+    // プラン制限チェック
+    if (isDatabaseAvailable() && prisma) {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+      });
+
+      if (user && user.role !== 'ADMIN') {
+        const plan = user.plan || 'free';
+        const dailyLimit = AI_LIMITS[plan] || AI_LIMITS.free;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // リセット日が今日より前ならカウントをリセット
+        const resetDate = user.aiUsageResetDate ? new Date(user.aiUsageResetDate) : null;
+        const needsReset = !resetDate || resetDate < today;
+        const currentCount = needsReset ? 0 : (user.aiUsageCount || 0);
+
+        if (currentCount >= dailyLimit) {
+          return NextResponse.json(
+            {
+              error: `本日のAI生成回数の上限（${dailyLimit}回）に達しました。${plan === 'free' ? 'Standard プラン以上で回数を増やせます。' : plan === 'standard' ? 'Pro プランで回数を増やせます。' : ''}`,
+              remaining: 0,
+              limit: dailyLimit,
+            },
+            { status: 429 }
+          );
+        }
+
+        // 使用量を更新
+        await prisma.user.update({
+          where: { id: session.user.id },
+          data: {
+            aiUsageCount: needsReset ? 1 : currentCount + 1,
+            aiUsageResetDate: today,
+          },
+        });
+      }
     }
 
     if (type === 'text') {
@@ -486,6 +540,12 @@ async function generateImageWithNanoBananaPro(
 // 投稿改善提案
 export async function PUT(request: NextRequest) {
   try {
+    // 認証チェック
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { text, targetMetric, apiKey } = await request.json();
 
     if (!apiKey) {
@@ -493,6 +553,43 @@ export async function PUT(request: NextRequest) {
         { error: 'AI APIキーが設定されていません。設定画面でGemini APIキーを入力してください。' },
         { status: 400 }
       );
+    }
+
+    // プラン制限チェック（POSTと同じロジック）
+    if (isDatabaseAvailable() && prisma) {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+      });
+
+      if (user && user.role !== 'ADMIN') {
+        const plan = user.plan || 'free';
+        const dailyLimit = AI_LIMITS[plan] || AI_LIMITS.free;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const resetDate = user.aiUsageResetDate ? new Date(user.aiUsageResetDate) : null;
+        const needsReset = !resetDate || resetDate < today;
+        const currentCount = needsReset ? 0 : (user.aiUsageCount || 0);
+
+        if (currentCount >= dailyLimit) {
+          return NextResponse.json(
+            {
+              error: `本日のAI生成回数の上限（${dailyLimit}回）に達しました。`,
+              remaining: 0,
+              limit: dailyLimit,
+            },
+            { status: 429 }
+          );
+        }
+
+        await prisma.user.update({
+          where: { id: session.user.id },
+          data: {
+            aiUsageCount: needsReset ? 1 : currentCount + 1,
+            aiUsageResetDate: today,
+          },
+        });
+      }
     }
 
     const systemPrompt = `# あなたの役割

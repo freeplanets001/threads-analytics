@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/autoreply",
-      "schedule": "0 9 * * *"
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/posts",
-      "schedule": "0 10 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -9,6 +9,34 @@ export interface Account {
   profilePicture?: string;
   accessToken: string;
   addedAt: string;
+  // Meta App設定（アカウントごと）
+  appId?: string;
+  appSecret?: string;
+  // トークン有効期限
+  tokenExpiresAt?: string; // ISO 8601形式
+}
+
+// トークンの状態を判定するユーティリティ
+export type TokenStatus = 'valid' | 'expiring_soon' | 'expired' | 'unknown';
+
+export function getTokenStatus(expiresAt?: string): TokenStatus {
+  if (!expiresAt) return 'unknown';
+
+  const now = new Date();
+  const expiry = new Date(expiresAt);
+  const daysUntilExpiry = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+
+  if (daysUntilExpiry < 0) return 'expired';
+  if (daysUntilExpiry < 7) return 'expiring_soon';
+  return 'valid';
+}
+
+export function getDaysUntilExpiry(expiresAt?: string): number | null {
+  if (!expiresAt) return null;
+
+  const now = new Date();
+  const expiry = new Date(expiresAt);
+  return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 const STORAGE_KEY = 'threads_accounts';
@@ -75,8 +103,18 @@ export function useAccountManager() {
     setAccounts(newAccounts);
   }, []);
 
+  // アカウント追加オプション
+  interface AddAccountOptions {
+    appId?: string;
+    appSecret?: string;
+    tokenExpiresAt?: string;
+  }
+
   // Add a new account
-  const addAccount = useCallback(async (accessToken: string): Promise<{ success: boolean; error?: string }> => {
+  const addAccount = useCallback(async (
+    accessToken: string,
+    options?: AddAccountOptions
+  ): Promise<{ success: boolean; error?: string; account?: Account }> => {
     try {
       // Fetch profile with the token
       const res = await fetch(`/api/threads/status?token=${encodeURIComponent(accessToken)}`);
@@ -89,13 +127,21 @@ export function useAccountManager() {
         return { success: false, error: 'Could not verify account' };
       }
 
+      // 既存のアカウント情報を取得（App設定を保持するため）
+      const existingAccount = accounts.find(a => a.id === data.user.id);
+
       const newAccount: Account = {
         id: data.user.id,
         username: data.user.username,
         name: data.user.name,
         profilePicture: data.user.threads_profile_picture_url,
         accessToken,
-        addedAt: new Date().toISOString(),
+        addedAt: existingAccount?.addedAt || new Date().toISOString(),
+        // App設定: 新しい値 > 既存値
+        appId: options?.appId ?? existingAccount?.appId,
+        appSecret: options?.appSecret ?? existingAccount?.appSecret,
+        // トークン有効期限
+        tokenExpiresAt: options?.tokenExpiresAt ?? existingAccount?.tokenExpiresAt,
       };
 
       // データベースにも保存
@@ -135,11 +181,31 @@ export function useAccountManager() {
         switchAccount(newAccount.id);
       }
 
-      return { success: true };
+      return { success: true, account: newAccount };
     } catch (err) {
       return { success: false, error: 'Failed to add account' };
     }
   }, [accounts, currentAccountId, saveAccounts]);
+
+  // Update an existing account (App設定やトークンの更新に使用)
+  const updateAccount = useCallback((
+    accountId: string,
+    updates: Partial<Omit<Account, 'id' | 'addedAt'>>
+  ) => {
+    const existingIndex = accounts.findIndex(a => a.id === accountId);
+    if (existingIndex < 0) return false;
+
+    const updatedAccount: Account = {
+      ...accounts[existingIndex],
+      ...updates,
+    };
+
+    const newAccounts = [...accounts];
+    newAccounts[existingIndex] = updatedAccount;
+    saveAccounts(newAccounts);
+
+    return true;
+  }, [accounts, saveAccounts]);
 
   // Remove an account
   const removeAccount = useCallback((accountId: string) => {
@@ -174,6 +240,7 @@ export function useAccountManager() {
     currentAccountId,
     isLoading,
     addAccount,
+    updateAccount,
     removeAccount,
     switchAccount,
   };

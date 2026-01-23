@@ -19,13 +19,16 @@ interface Post {
 interface PostsAnalyticsTableProps {
   posts: Post[];
   onRefresh?: () => void;
+  onLoadAll?: () => void;
   loading?: boolean;
+  loadingAll?: boolean;
+  totalAvailable?: number;
 }
 
 type SortKey = 'timestamp' | 'likes' | 'replies' | 'reposts' | 'views' | 'engagement';
 type SortOrder = 'asc' | 'desc';
 
-export function PostsAnalyticsTable({ posts, onRefresh, loading = false }: PostsAnalyticsTableProps) {
+export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = false, loadingAll = false, totalAvailable }: PostsAnalyticsTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('timestamp');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -207,6 +210,15 @@ export function PostsAnalyticsTable({ posts, onRefresh, loading = false }: Posts
             <span className="text-sm font-normal text-slate-500">({stats.total}件)</span>
           </h3>
           <div className="flex items-center gap-2">
+            {onLoadAll && posts.length < (totalAvailable || 100) && (
+              <button
+                onClick={onLoadAll}
+                disabled={loadingAll || loading}
+                className="px-3 py-1.5 text-sm bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 disabled:opacity-50"
+              >
+                {loadingAll ? '読込中...' : '全件読込'}
+              </button>
+            )}
             <button
               onClick={exportToCSV}
               className="px-3 py-1.5 text-sm bg-green-100 text-green-700 rounded-lg hover:bg-green-200"
@@ -216,7 +228,7 @@ export function PostsAnalyticsTable({ posts, onRefresh, loading = false }: Posts
             {onRefresh && (
               <button
                 onClick={onRefresh}
-                disabled={loading}
+                disabled={loading || loadingAll}
                 className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50"
               >
                 {loading ? '更新中...' : '更新'}
@@ -398,16 +410,33 @@ export function PostsAnalyticsTable({ posts, onRefresh, loading = false }: Posts
                     {((post.likes || 0) + (post.replies || 0) + (post.reposts || 0))}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {post.permalink && (
-                      <a
-                        href={post.permalink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-violet-600 hover:text-violet-700 text-sm"
+                    <div className="flex items-center justify-center gap-1">
+                      {post.permalink && (
+                        <a
+                          href={post.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 text-violet-600 hover:bg-violet-50 rounded"
+                          title="Threadsで開く"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                      )}
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(post.text || '');
+                          alert('テキストをコピーしました');
+                        }}
+                        className="p-1 text-slate-500 hover:bg-slate-50 rounded"
+                        title="テキストをコピー"
                       >
-                        開く ↗
-                      </a>
-                    )}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

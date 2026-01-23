@@ -29,13 +29,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // クエリパラメータで取得件数を制御
+  const { searchParams } = new URL(request.url);
+  const fetchAll = searchParams.get('all') === 'true';
+  const limit = parseInt(searchParams.get('limit') || '50', 10);
+
   try {
     const client = new ThreadsAPIClient(accessToken);
 
     // プロフィール、投稿、インサイト、フォロワー数、自分のリプライを並行取得
     const [profile, threads, insights, followersCount, myReplies] = await Promise.all([
       client.getMe(),
-      client.getMyThreads(50),
+      fetchAll ? client.getAllMyThreads(500) : client.getMyThreads(Math.min(limit, 100)),
       client.getMyInsights().catch(() => null),
       client.getFollowersCount(),
       client.getMyReplies(50).catch(() => ({ data: [] })),

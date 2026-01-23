@@ -34,6 +34,9 @@ import {
   AIInsightsPanel,
 } from '@/components/analytics/AdvancedCharts';
 import { useAccountManager } from '@/hooks/useAccountManager';
+import { AccountManagerModal } from '@/components/AccountManagerModal';
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import type { AnalyticsResult, HashtagAnalysis, KeywordAnalysis, HeatmapData, AIInsight, DailyTrend } from '@/lib/analytics/calculations';
 
 type TabType = 'overview' | 'compose' | 'bulk' | 'schedule' | 'recurring' | 'autoreply' | 'drafts' | 'templates' | 'calendar' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'reports' | 'export';
@@ -43,6 +46,7 @@ interface ThreadWithInsights {
   text?: string;
   timestamp: string;
   media_type: string;
+  media_url?: string;
   permalink: string;
   is_quote_post?: boolean;
   insights: {
@@ -92,9 +96,13 @@ interface APIResponse {
 }
 
 export default function AnalyticsDashboard() {
+  const router = useRouter();
+  const { data: session, status: authStatus } = useSession();
+
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [data, setData] = useState<APIResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingAllPosts, setLoadingAllPosts] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // アカウント管理
@@ -103,25 +111,26 @@ export default function AnalyticsDashboard() {
     currentAccount,
     isLoading: accountsLoading,
     addAccount,
+    updateAccount,
     removeAccount,
     switchAccount,
   } = useAccountManager();
 
   const [showAccountModal, setShowAccountModal] = useState(false);
-  const [newToken, setNewToken] = useState('');
-  const [addingAccount, setAddingAccount] = useState(false);
 
-  // トークン変換用
-  const [showTokenConverter, setShowTokenConverter] = useState(false);
-  const [shortToken, setShortToken] = useState('');
-  const [convertedToken, setConvertedToken] = useState('');
-  const [converting, setConverting] = useState(false);
-  const [convertError, setConvertError] = useState<string | null>(null);
-  const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
-
-  // ロール管理（開発用: デフォルトでADMIN）
-  const [userRole, setUserRole] = useState<Role>('ADMIN');
+  // ロールをセッションから取得、フォールバックでローカル管理
+  const sessionUser = session?.user as { role?: string; plan?: string } | undefined;
+  const [userRole, setUserRole] = useState<Role>('STANDARD');
   const permissions = getPermissions(userRole);
+
+  // セッションからロールを更新
+  useEffect(() => {
+    if (sessionUser?.role && ['ADMIN', 'PRO', 'STANDARD'].includes(sessionUser.role)) {
+      setUserRole(sessionUser.role as Role);
+    } else if (sessionUser?.plan === 'pro') {
+      setUserRole('PRO');
+    }
+  }, [sessionUser]);
 
   // テーマ管理
   const { theme, setTheme, actualTheme } = useTheme();
@@ -133,32 +142,6 @@ export default function AnalyticsDashboard() {
   // 通知センター
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // ロールをサーバーから取得（localStorageはフォールバック）
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      try {
-        const res = await fetch('/api/admin/setup');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.user?.role && ['ADMIN', 'PRO', 'STANDARD'].includes(data.user.role)) {
-            setUserRole(data.user.role as Role);
-            localStorage.setItem('user_role', data.user.role);
-            return;
-          }
-        }
-      } catch (e) {
-        console.log('Failed to fetch user role from server', e);
-      }
-
-      // フォールバック: localStorageから読み込み
-      const savedRole = localStorage.getItem('user_role') as Role | null;
-      if (savedRole && ['ADMIN', 'PRO', 'STANDARD'].includes(savedRole)) {
-        setUserRole(savedRole);
-      }
-    };
-
-    fetchUserRole();
-  }, []);
 
   const fetchData = useCallback(async () => {
     if (!currentAccount) return;
@@ -189,6 +172,31 @@ export default function AnalyticsDashboard() {
     }
   }, [currentAccount]);
 
+  // 全投稿を読み込む
+  const fetchAllPosts = useCallback(async () => {
+    if (!currentAccount) return;
+
+    setLoadingAllPosts(true);
+    try {
+      const res = await fetch('/api/threads/me?all=true', {
+        headers: {
+          Authorization: `Bearer ${currentAccount.accessToken}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error('全投稿の取得に失敗しました');
+      }
+
+      const json = await res.json();
+      setData(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoadingAllPosts(false);
+    }
+  }, [currentAccount]);
+
   useEffect(() => {
     if (currentAccount) {
       fetchData();
@@ -197,52 +205,6 @@ export default function AnalyticsDashboard() {
     }
   }, [currentAccount, fetchData]);
 
-  const handleAddAccount = async () => {
-    if (!newToken.trim()) return;
-    setAddingAccount(true);
-    setError(null);
-    const result = await addAccount(newToken.trim());
-    setAddingAccount(false);
-
-    if (result.success) {
-      setNewToken('');
-      setShowAccountModal(false);
-    } else {
-      setError(result.error || 'Failed to add account');
-    }
-  };
-
-  const handleConvertToken = async () => {
-    if (!shortToken.trim()) return;
-    setConverting(true);
-    setConvertError(null);
-    setConvertedToken('');
-    setTokenExpiresIn(null);
-
-    try {
-      const res = await fetch('/api/threads/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shortLivedToken: shortToken.trim() }),
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        setConvertError(data.error || '変換に失敗しました');
-      } else {
-        setConvertedToken(data.accessToken);
-        setTokenExpiresIn(data.expiresIn);
-      }
-    } catch {
-      setConvertError('通信エラーが発生しました');
-    } finally {
-      setConverting(false);
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
 
   const exportData = (format: 'json' | 'csv') => {
     if (!data) return;
@@ -318,6 +280,50 @@ export default function AnalyticsDashboard() {
   const analytics = data?.analytics;
   const stats = data?.aggregatedStats;
 
+  // 認証状態チェック中
+  if (authStatus === 'loading') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-xl shadow-lg">
+          <div className="w-5 h-5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-slate-600">読み込み中...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // 未認証の場合はログインページにリダイレクト
+  if (authStatus === 'unauthenticated') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-violet-50 to-cyan-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+          <h1 className="text-2xl font-bold text-slate-900 mb-2">
+            Threads Studio
+          </h1>
+          <p className="text-slate-500 mb-6">分析・投稿スタジオ</p>
+
+          <p className="text-sm text-slate-600 mb-6">
+            ログインしてダッシュボードにアクセスしてください。
+          </p>
+
+          <button
+            onClick={() => router.push('/login')}
+            className="w-full py-3 bg-violet-600 text-white font-semibold rounded-xl hover:bg-violet-700 transition-colors mb-4"
+          >
+            ログイン
+          </button>
+
+          <Link
+            href="/pricing"
+            className="text-sm text-violet-600 hover:underline"
+          >
+            料金プランを見る →
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // アカウント読み込み中
   if (accountsLoading) {
     return (
@@ -342,104 +348,24 @@ export default function AnalyticsDashboard() {
             <p className="text-slate-500">分析・投稿スタジオ</p>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                アクセストークンを入力
-              </label>
-              <textarea
-                value={newToken}
-                onChange={(e) => setNewToken(e.target.value)}
-                placeholder="THQWxxxxxx..."
-                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 h-24 resize-none"
-              />
+          <div className="space-y-6">
+            <div className="p-4 bg-violet-50 rounded-xl border border-violet-200">
+              <h3 className="text-sm font-semibold text-violet-700 mb-2">はじめに</h3>
+              <p className="text-sm text-violet-600">
+                Threadsアカウントを追加して、分析・投稿機能を開始しましょう。
+                複数のアカウントを管理でき、それぞれ別のMeta Appを使用できます。
+              </p>
             </div>
-
-            {error && (
-              <p className="text-sm text-red-600">{error}</p>
-            )}
 
             <button
-              onClick={handleAddAccount}
-              disabled={addingAccount || !newToken.trim()}
-              className="w-full py-3 bg-violet-600 text-white font-semibold rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50"
+              onClick={() => setShowAccountModal(true)}
+              className="w-full py-4 bg-violet-600 text-white font-semibold rounded-xl hover:bg-violet-700 transition-colors flex items-center justify-center gap-2"
             >
-              {addingAccount ? '確認中...' : 'アカウントを追加'}
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              アカウントを追加
             </button>
-
-            <div className="pt-4 border-t border-slate-200">
-              <button
-                onClick={() => setShowTokenConverter(!showTokenConverter)}
-                className="w-full text-left text-sm font-medium text-violet-600 hover:text-violet-700 flex items-center justify-between"
-              >
-                <span>短期トークン → 長期トークン変換ツール</span>
-                <span className="text-lg">{showTokenConverter ? '−' : '+'}</span>
-              </button>
-
-              {showTokenConverter && (
-                <div className="mt-4 space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">
-                      短期トークン（Graph API Explorerで取得）
-                    </label>
-                    <textarea
-                      value={shortToken}
-                      onChange={(e) => setShortToken(e.target.value)}
-                      placeholder="短期トークンを貼り付け..."
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 h-16 resize-none"
-                    />
-                  </div>
-
-                  <button
-                    onClick={handleConvertToken}
-                    disabled={converting || !shortToken.trim()}
-                    className="w-full py-2 bg-cyan-600 text-white text-sm font-medium rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50"
-                  >
-                    {converting ? '変換中...' : '長期トークンに変換'}
-                  </button>
-
-                  {convertError && (
-                    <p className="text-xs text-red-600">{convertError}</p>
-                  )}
-
-                  {convertedToken && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-emerald-700">長期トークン（約60日間有効）</span>
-                        <button
-                          onClick={() => copyToClipboard(convertedToken)}
-                          className="text-xs text-emerald-600 hover:text-emerald-800"
-                        >
-                          コピー
-                        </button>
-                      </div>
-                      <p className="text-xs text-emerald-800 break-all font-mono bg-emerald-100 p-2 rounded">
-                        {convertedToken.substring(0, 50)}...
-                      </p>
-                      {tokenExpiresIn && (
-                        <p className="text-xs text-emerald-600 mt-1">
-                          有効期限: {Math.floor(tokenExpiresIn / 86400)}日
-                        </p>
-                      )}
-                      <button
-                        onClick={() => {
-                          setNewToken(convertedToken);
-                          setConvertedToken('');
-                          setShortToken('');
-                        }}
-                        className="mt-2 w-full py-1.5 bg-emerald-600 text-white text-xs font-medium rounded hover:bg-emerald-700"
-                      >
-                        このトークンを上の入力欄にセット
-                      </button>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-slate-500">
-                    ※ THREADS_APP_SECRETがサーバーに設定されている必要があります
-                  </p>
-                </div>
-              )}
-            </div>
 
             <div className="pt-4 border-t border-slate-200">
               <p className="text-xs text-slate-500 mb-2">トークンの取得方法:</p>
@@ -447,11 +373,24 @@ export default function AnalyticsDashboard() {
                 <li>Meta for Developersでアプリを作成</li>
                 <li>Threads APIの権限を追加</li>
                 <li>Graph API Explorerでトークンを生成</li>
-                <li>上の変換ツールで長期トークンに変換</li>
+                <li>「アカウントを追加」でトークン変換ツールを使用</li>
               </ol>
             </div>
           </div>
         </div>
+
+        {/* 初期設定時もアカウントモーダルを表示 */}
+        {showAccountModal && (
+          <AccountManagerModal
+            accounts={accounts}
+            currentAccount={currentAccount}
+            onClose={() => setShowAccountModal(false)}
+            onSwitchAccount={switchAccount}
+            onAddAccount={addAccount}
+            onUpdateAccount={updateAccount}
+            onRemoveAccount={removeAccount}
+          />
+        )}
       </div>
     );
   }
@@ -493,24 +432,19 @@ export default function AnalyticsDashboard() {
                 <NotificationBell onClick={() => setShowNotifications(true)} />
               )}
 
-              {/* Role Switcher (開発用) */}
-              <select
-                value={userRole}
-                onChange={(e) => {
-                  const newRole = e.target.value as Role;
-                  setUserRole(newRole);
-                  localStorage.setItem('user_role', newRole);
-                }}
-                className={`px-2 py-1 text-xs rounded-lg font-medium border-0 cursor-pointer ${
-                  userRole === 'ADMIN' ? 'bg-red-100 text-red-700' :
-                  userRole === 'PRO' ? 'bg-blue-100 text-blue-700' :
-                  'bg-slate-100 text-slate-700'
+              {/* Plan Badge & Upgrade Link */}
+              <Link
+                href="/pricing"
+                className={`px-2 py-1 text-xs rounded-lg font-medium ${
+                  sessionUser?.plan === 'pro' ? 'bg-violet-100 text-violet-700' :
+                  sessionUser?.plan === 'standard' ? 'bg-blue-100 text-blue-700' :
+                  'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                <option value="ADMIN">Admin</option>
-                <option value="PRO">Pro</option>
-                <option value="STANDARD">Standard</option>
-              </select>
+                {sessionUser?.plan === 'pro' ? 'Pro' :
+                 sessionUser?.plan === 'standard' ? 'Standard' :
+                 'Free → アップグレード'}
+              </Link>
 
               {/* Admin Link */}
               {permissions.adminPanel && (
@@ -554,6 +488,21 @@ export default function AnalyticsDashboard() {
               >
                 更新
               </button>
+
+              {/* User Menu */}
+              {session && (
+                <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+                  <span className="text-xs text-slate-500 hidden sm:inline">
+                    {session.user?.email}
+                  </span>
+                  <button
+                    onClick={() => signOut()}
+                    className="px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded"
+                  >
+                    ログアウト
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -622,142 +571,15 @@ export default function AnalyticsDashboard() {
 
       {/* Account Modal */}
       {showAccountModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900">アカウント管理</h2>
-                <button
-                  onClick={() => setShowAccountModal(false)}
-                  className="text-slate-400 hover:text-slate-600 text-xl"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-4">
-              {/* Account List */}
-              <div className="space-y-2">
-                {accounts.map((account) => (
-                  <div
-                    key={account.id}
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      currentAccount?.id === account.id
-                        ? 'border-violet-300 bg-violet-50'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <button
-                      onClick={() => {
-                        switchAccount(account.id);
-                        setShowAccountModal(false);
-                      }}
-                      className="flex items-center gap-3 flex-1"
-                    >
-                      <span className="w-10 h-10 rounded-full bg-violet-200 flex items-center justify-center text-lg font-bold text-violet-700">
-                        {account.username[0].toUpperCase()}
-                      </span>
-                      <div className="text-left">
-                        <p className="font-medium text-slate-900">@{account.username}</p>
-                        {account.name && (
-                          <p className="text-sm text-slate-500">{account.name}</p>
-                        )}
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => removeAccount(account.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                      title="削除"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add Account */}
-              <div className="pt-4 border-t border-slate-200">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  アカウントを追加
-                </label>
-                <textarea
-                  value={newToken}
-                  onChange={(e) => setNewToken(e.target.value)}
-                  placeholder="アクセストークンを入力..."
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 h-20 resize-none"
-                />
-                <button
-                  onClick={handleAddAccount}
-                  disabled={addingAccount || !newToken.trim()}
-                  className="mt-2 w-full py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50"
-                >
-                  {addingAccount ? '確認中...' : '追加'}
-                </button>
-              </div>
-
-              {/* Token Converter */}
-              <div className="pt-4 border-t border-slate-200">
-                <button
-                  onClick={() => setShowTokenConverter(!showTokenConverter)}
-                  className="w-full text-left text-sm font-medium text-cyan-600 hover:text-cyan-700 flex items-center justify-between"
-                >
-                  <span>トークン変換ツール</span>
-                  <span>{showTokenConverter ? '−' : '+'}</span>
-                </button>
-
-                {showTokenConverter && (
-                  <div className="mt-3 space-y-2">
-                    <textarea
-                      value={shortToken}
-                      onChange={(e) => setShortToken(e.target.value)}
-                      placeholder="短期トークンを貼り付け..."
-                      className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 h-16 resize-none"
-                    />
-                    <button
-                      onClick={handleConvertToken}
-                      disabled={converting || !shortToken.trim()}
-                      className="w-full py-1.5 bg-cyan-600 text-white text-xs font-medium rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50"
-                    >
-                      {converting ? '変換中...' : '長期トークンに変換'}
-                    </button>
-
-                    {convertError && (
-                      <p className="text-xs text-red-600">{convertError}</p>
-                    )}
-
-                    {convertedToken && (
-                      <div className="p-2 bg-emerald-50 border border-emerald-200 rounded">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-medium text-emerald-700">変換完了</span>
-                          <button
-                            onClick={() => copyToClipboard(convertedToken)}
-                            className="text-xs text-emerald-600 hover:text-emerald-800"
-                          >
-                            コピー
-                          </button>
-                        </div>
-                        <p className="text-xs text-emerald-800 break-all font-mono">
-                          {convertedToken.substring(0, 40)}...
-                        </p>
-                        <button
-                          onClick={() => {
-                            setNewToken(convertedToken);
-                            setConvertedToken('');
-                            setShortToken('');
-                          }}
-                          className="mt-1 w-full py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700"
-                        >
-                          上の入力欄にセット
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <AccountManagerModal
+          accounts={accounts}
+          currentAccount={currentAccount}
+          onClose={() => setShowAccountModal(false)}
+          onSwitchAccount={switchAccount}
+          onAddAccount={addAccount}
+          onUpdateAccount={updateAccount}
+          onRemoveAccount={removeAccount}
+        />
       )}
 
       {/* Notification Center */}
@@ -851,6 +673,7 @@ export default function AnalyticsDashboard() {
               <div className="space-y-6">
                 <BulkPostGenerator
                   accessToken={currentAccount.accessToken}
+                  accountId={currentAccount.id}
                   embedded={true}
                   onPostsScheduled={() => {
                     fetchData();
@@ -887,11 +710,7 @@ export default function AnalyticsDashboard() {
               <TemplateManager
                 onSelectTemplate={(template) => {
                   // テンプレートを選択したら投稿作成タブに移動
-                  console.log('Template selected:', template);
-                  console.log('Template text:', template.text);
-                  const textToSet = template.text || '';
-                  console.log('Setting initialComposeText to:', textToSet);
-                  setInitialComposeText(textToSet);
+                  setInitialComposeText(template.text || '');
                   setComposerKey(prev => prev + 1);
                   setActiveTab('compose');
                 }}
@@ -938,11 +757,18 @@ export default function AnalyticsDashboard() {
                     text: t.text || '',
                     timestamp: t.timestamp,
                     media_type: t.media_type,
+                    media_url: t.media_url,
+                    permalink: t.permalink,
                     likes: t.insights.likes,
                     replies: t.insights.replies,
                     reposts: t.insights.reposts,
                     views: t.insights.views,
                   }))}
+                  onRefresh={fetchData}
+                  onLoadAll={fetchAllPosts}
+                  loading={loading}
+                  loadingAll={loadingAllPosts}
+                  totalAvailable={500}
                 />
 
                 {/* Top/Worst Posts Quick View */}

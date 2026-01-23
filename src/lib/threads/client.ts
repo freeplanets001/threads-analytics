@@ -99,11 +99,54 @@ export class ThreadsAPIClient {
   }
 
   // 自分の投稿一覧取得（拡張版）
-  async getMyThreads(limit = 50): Promise<{ data: ThreadsMedia[] }> {
-    return this.fetch<{ data: ThreadsMedia[] }>('/me/threads', {
+  async getMyThreads(limit = 50): Promise<{ data: ThreadsMedia[]; paging?: { cursors?: { after?: string; before?: string }; next?: string } }> {
+    return this.fetch<{ data: ThreadsMedia[]; paging?: { cursors?: { after?: string; before?: string }; next?: string } }>('/me/threads', {
       fields: 'id,media_type,media_url,permalink,text,timestamp,username,like_count,reply_count,repost_count,quote_count,is_quote_post',
       limit: limit.toString(),
     });
+  }
+
+  // 全投稿を取得（ページネーション対応）
+  async getAllMyThreads(maxPosts = 500): Promise<{ data: ThreadsMedia[] }> {
+    const allPosts: ThreadsMedia[] = [];
+    let cursor: string | undefined;
+    const batchSize = 100; // APIの最大値
+
+    while (allPosts.length < maxPosts) {
+      const params: Record<string, string> = {
+        fields: 'id,media_type,media_url,permalink,text,timestamp,username,like_count,reply_count,repost_count,quote_count,is_quote_post',
+        limit: batchSize.toString(),
+      };
+
+      if (cursor) {
+        params.after = cursor;
+      }
+
+      const response = await this.fetch<{
+        data: ThreadsMedia[];
+        paging?: { cursors?: { after?: string; before?: string }; next?: string };
+      }>('/me/threads', params);
+
+      if (!response.data || response.data.length === 0) {
+        break;
+      }
+
+      allPosts.push(...response.data);
+
+      // 次のページがあるか確認
+      if (response.paging?.cursors?.after) {
+        cursor = response.paging.cursors.after;
+      } else {
+        break;
+      }
+
+      // 最大数に達した場合
+      if (allPosts.length >= maxPosts) {
+        break;
+      }
+    }
+
+    return { data: allPosts.slice(0, maxPosts) };
   }
 
   // 自分のアカウントインサイト取得（時系列対応）

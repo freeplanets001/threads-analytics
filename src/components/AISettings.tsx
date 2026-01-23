@@ -103,25 +103,46 @@ export function AISettings({ onClose }: AISettingsProps) {
   const [tone, setTone] = useState<'engaging' | 'professional' | 'casual'>('engaging');
   const [length, setLength] = useState<'short' | 'medium' | 'long'>('medium');
   const [saved, setSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState<'api' | 'prompt' | 'presets'>('api');
+  const [activeTab, setActiveTab] = useState<'threads' | 'api' | 'prompt' | 'presets'>('threads');
+
+  // Threads API設定
+  const [threadsAppId, setThreadsAppId] = useState('');
+  const [threadsAppSecret, setThreadsAppSecret] = useState('');
 
   useEffect(() => {
     const storedKey = localStorage.getItem('gemini_api_key');
     const storedPrompt = localStorage.getItem('ai_custom_prompt');
     const storedTone = localStorage.getItem('ai_tone');
     const storedLength = localStorage.getItem('ai_length');
+    const storedAppId = localStorage.getItem('threads_app_id');
+    const storedAppSecret = localStorage.getItem('threads_app_secret');
 
     if (storedKey) setGeminiKey(storedKey);
     if (storedPrompt) setCustomPrompt(storedPrompt);
     if (storedTone) setTone(storedTone as typeof tone);
     if (storedLength) setLength(storedLength as typeof length);
+    if (storedAppId) setThreadsAppId(storedAppId);
+    if (storedAppSecret) setThreadsAppSecret(storedAppSecret);
   }, []);
 
   const handleSave = () => {
+    // Gemini API
     if (geminiKey.trim()) {
       localStorage.setItem('gemini_api_key', geminiKey.trim());
     } else {
       localStorage.removeItem('gemini_api_key');
+    }
+
+    // Threads API
+    if (threadsAppId.trim()) {
+      localStorage.setItem('threads_app_id', threadsAppId.trim());
+    } else {
+      localStorage.removeItem('threads_app_id');
+    }
+    if (threadsAppSecret.trim()) {
+      localStorage.setItem('threads_app_secret', threadsAppSecret.trim());
+    } else {
+      localStorage.removeItem('threads_app_secret');
     }
 
     localStorage.setItem('ai_custom_prompt', customPrompt);
@@ -137,10 +158,14 @@ export function AISettings({ onClose }: AISettingsProps) {
     setCustomPrompt(DEFAULT_SYSTEM_PROMPT);
     setTone('engaging');
     setLength('medium');
+    setThreadsAppId('');
+    setThreadsAppSecret('');
     localStorage.removeItem('gemini_api_key');
     localStorage.removeItem('ai_custom_prompt');
     localStorage.removeItem('ai_tone');
     localStorage.removeItem('ai_length');
+    localStorage.removeItem('threads_app_id');
+    localStorage.removeItem('threads_app_secret');
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -165,7 +190,17 @@ export function AISettings({ onClose }: AISettingsProps) {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mt-4">
+          <div className="flex gap-1 mt-4 flex-wrap">
+            <button
+              onClick={() => setActiveTab('threads')}
+              className={`px-4 py-2 text-sm rounded-lg ${
+                activeTab === 'threads'
+                  ? 'bg-violet-100 text-violet-700'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Threads API
+            </button>
             <button
               onClick={() => setActiveTab('api')}
               className={`px-4 py-2 text-sm rounded-lg ${
@@ -174,7 +209,7 @@ export function AISettings({ onClose }: AISettingsProps) {
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              APIキー
+              AI設定
             </button>
             <button
               onClick={() => setActiveTab('prompt')}
@@ -184,7 +219,7 @@ export function AISettings({ onClose }: AISettingsProps) {
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              カスタムプロンプト
+              プロンプト
             </button>
             <button
               onClick={() => setActiveTab('presets')}
@@ -200,6 +235,70 @@ export function AISettings({ onClose }: AISettingsProps) {
         </div>
 
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Threads API Tab */}
+          {activeTab === 'threads' && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h3 className="text-sm font-medium text-blue-800 mb-2">Threads API設定について</h3>
+                <p className="text-xs text-blue-700">
+                  トークンの長期変換機能を使用するには、Meta for DevelopersでThreadsアプリを作成し、
+                  App IDとApp Secretを設定してください。
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  App ID
+                </label>
+                <input
+                  type="text"
+                  value={threadsAppId}
+                  onChange={(e) => setThreadsAppId(e.target.value)}
+                  placeholder="123456789012345"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  App Secret
+                </label>
+                <input
+                  type="password"
+                  value={threadsAppSecret}
+                  onChange={(e) => setThreadsAppSecret(e.target.value)}
+                  placeholder="abc123..."
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  App Secretは安全のため表示されません
+                </p>
+              </div>
+
+              <div className="bg-slate-50 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-slate-700 mb-2">設定手順</h3>
+                <ol className="text-xs text-slate-600 space-y-2 list-decimal ml-4">
+                  <li>
+                    <a href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">
+                      Meta for Developers
+                    </a>
+                    にログイン
+                  </li>
+                  <li>「マイアプリ」→「アプリを作成」→「Threads用」を選択</li>
+                  <li>アプリ設定 →「ベーシック」でApp IDとApp Secretを確認</li>
+                  <li>上記のフィールドに貼り付けて保存</li>
+                </ol>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <p className="text-xs text-amber-700">
+                  <strong>注意:</strong> App Secretは機密情報です。第三者と共有しないでください。
+                  この設定はブラウザのlocalStorageに保存されます。
+                </p>
+              </div>
+            </>
+          )}
+
           {/* API Tab */}
           {activeTab === 'api' && (
             <>
