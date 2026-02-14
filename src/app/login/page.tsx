@@ -10,27 +10,29 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/';
   const errorParam = searchParams.get('error');
+  const detailParam = searchParams.get('detail');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const getErrorMessage = (err: string | null) => {
+  const getErrorMessage = (err: string | null, detail: string | null) => {
     if (!err) return '';
+    const detailStr = detail ? `\n詳細: ${detail}` : '';
     switch (err) {
       case 'Configuration':
-        return '認証設定エラーが発生しました。管理者にお問い合わせください。(Configuration)';
+        return `認証設定エラーが発生しました。(Configuration)${detailStr}`;
       case 'OAuthAccountNotLinked':
-        return 'このメールアドレスは別の認証方法で登録されています。(OAuthAccountNotLinked)';
+        return `このメールアドレスは別の認証方法で登録されています。(OAuthAccountNotLinked)${detailStr}`;
       case 'OAuthCallbackError':
-        return 'OAuth認証コールバックでエラーが発生しました。(OAuthCallbackError)';
+        return `OAuth認証コールバックでエラーが発生しました。(OAuthCallbackError)${detailStr}`;
       case 'OAuthSignin':
-        return 'OAuth認証の開始に失敗しました。(OAuthSignin)';
+        return `OAuth認証の開始に失敗しました。(OAuthSignin)${detailStr}`;
       case 'MissingCSRF':
-        return 'CSRFトークンが見つかりません。ページをリロードしてお試しください。(MissingCSRF)';
+        return `CSRFトークンが見つかりません。ページをリロードしてお試しください。(MissingCSRF)${detailStr}`;
       default:
-        return `ログインに失敗しました。(${err})`;
+        return `ログインに失敗しました。(${err})${detailStr}`;
     }
   };
-  const [error, setError] = useState(getErrorMessage(errorParam));
+  const [error, setError] = useState(getErrorMessage(errorParam, detailParam));
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
