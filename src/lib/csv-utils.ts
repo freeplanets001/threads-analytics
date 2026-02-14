@@ -83,7 +83,7 @@ const HEADER_MAP: Record<string, keyof CsvRow> = {
   type: 'type',
   mediatype: 'type',
   media_type: 'type',
-  '投稿タイプ': 'type',
+  'メディアタイプ': 'type',
   'タイプ': 'type',
   mediaurls: 'mediaUrls',
   media_urls: 'mediaUrls',
@@ -106,9 +106,63 @@ function mapHeaders(headers: string[]): Map<number, keyof CsvRow> {
   return mapping;
 }
 
+// 引用符内の改行を考慮してCSVを論理行に分割
+function splitCsvIntoLogicalLines(content: string): string[] {
+  const lines: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+
+    if (char === '"') {
+      // ダブルクォート内のエスケープ("") かどうか
+      if (inQuotes && content[i + 1] === '"') {
+        current += '""';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+        current += char;
+      }
+    } else if ((char === '\n' || (char === '\r' && content[i + 1] === '\n')) && !inQuotes) {
+      if (current.trim() !== '') {
+        lines.push(current);
+      }
+      current = '';
+      if (char === '\r') i++; // skip \n in \r\n
+    } else if (char === '\r' && !inQuotes) {
+      if (current.trim() !== '') {
+        lines.push(current);
+      }
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim() !== '') {
+    lines.push(current);
+  }
+  return lines;
+}
+
+// ヘッダー行を自動検出（シート名などの非ヘッダー行をスキップ）
+function findHeaderLineIndex(lines: string[], separator: string): number {
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    const fields = parseCsvLine(lines[i], separator);
+    const mapping = mapHeaders(fields);
+    const hasText = Array.from(mapping.values()).includes('text');
+    const hasDate = Array.from(mapping.values()).includes('scheduledDate');
+    if (hasText && hasDate) {
+      return i;
+    }
+  }
+  return 0; // 見つからなければ最初の行をヘッダーとする
+}
+
 // CSV文字列をパース
 export function parseCSV(content: string): CsvParseResult {
-  const lines = content.split(/\r?\n/).filter(line => line.trim() !== '');
+  // 引用符内の改行に対応した行分割
+  const lines = splitCsvIntoLogicalLines(content);
 
   if (lines.length < 2) {
     return {
@@ -120,7 +174,10 @@ export function parseCSV(content: string): CsvParseResult {
   }
 
   const separator = detectSeparator(lines[0]);
-  const headerFields = parseCsvLine(lines[0], separator);
+
+  // ヘッダー行を自動検出（「表1」などのシート名をスキップ）
+  const headerIndex = findHeaderLineIndex(lines, separator);
+  const headerFields = parseCsvLine(lines[headerIndex], separator);
   const headerMapping = mapHeaders(headerFields);
 
   // 最低限 text と scheduledDate が必要
@@ -143,7 +200,7 @@ export function parseCSV(content: string): CsvParseResult {
   const allErrors: CsvValidationError[] = [];
   const invalidRowIndices = new Set<number>();
 
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerIndex + 1; i < lines.length; i++) {
     const fields = parseCsvLine(lines[i], separator);
     const row: CsvRow = {
       text: '',
@@ -168,12 +225,18 @@ export function parseCSV(content: string): CsvParseResult {
       }
     }
 
+    // type が投稿タイプのカラムにマッピングされている場合、不正な値はデフォルトに
+    if (row.type && !['text', 'image', 'video', 'carousel', 'thread'].includes(row.type.toLowerCase().trim())) {
+      row.type = 'text';
+    }
+
+    const rowIndex = i - headerIndex - 1;
     const rowErrors = validateCsvRow(row, i);
     rows.push(row);
 
     if (rowErrors.length > 0) {
       allErrors.push(...rowErrors);
-      invalidRowIndices.add(i - 1); // 0-indexed for rows array
+      invalidRowIndices.add(rowIndex);
     }
   }
 
