@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { CsvImportModal } from './CsvImportModal';
+import { exportScheduledPostsToCsv } from '@/lib/csv-utils';
 
 interface ScheduledPost {
   id: string;
@@ -18,6 +20,8 @@ interface ScheduleManagerProps {
   onRefresh?: () => void;
 }
 
+type StatusFilter = 'all' | 'pending' | 'completed' | 'failed';
+
 export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleManagerProps) {
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,13 +35,29 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   const [newPostTime, setNewPostTime] = useState('');
   const [adding, setAdding] = useState(false);
 
+  // CSVインポートモーダル
+  const [showCsvImport, setShowCsvImport] = useState(false);
+
+  // フィルター
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  // 一括選択
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // 編集
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [saving, setSaving] = useState(false);
+
   // ローカルの予約投稿をAPIにマイグレーション
   const migrateLocalPostsToApi = useCallback(async (localPosts: ScheduledPost[]) => {
     if (!accountId) return;
 
     const now = new Date();
     for (const post of localPosts) {
-      // 過去の投稿はスキップ
       if (post.status !== 'pending' || new Date(post.scheduledAt) <= now) continue;
 
       try {
@@ -55,7 +75,6 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         console.error('Failed to migrate scheduled post:', e);
       }
     }
-    // マイグレーション完了後、ローカルストレージをクリア
     localStorage.removeItem('scheduled_posts');
   }, [accountId]);
 
@@ -64,24 +83,19 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     setLoading(true);
     setError(null);
 
-    // APIから取得を試みる
     try {
       const response = await fetch('/api/scheduled');
       if (response.ok) {
         const data = await response.json();
-        // isRecurring: false のみフィルタ
         const scheduled = (data.scheduledPosts || []).filter((p: { isRecurring?: boolean }) => !p.isRecurring);
 
-        // APIが空でローカルストレージに投稿がある場合、マイグレーション
         if (scheduled.length === 0 && accountId) {
           const saved = localStorage.getItem('scheduled_posts');
           if (saved) {
             const localPosts = JSON.parse(saved) as ScheduledPost[];
             const pendingPosts = localPosts.filter(p => p.status === 'pending' && new Date(p.scheduledAt) > new Date());
             if (pendingPosts.length > 0) {
-              console.log('Migrating local scheduled posts to API...');
               await migrateLocalPostsToApi(localPosts);
-              // マイグレーション後、再取得
               const refreshResponse = await fetch('/api/scheduled');
               if (refreshResponse.ok) {
                 const refreshData = await refreshResponse.json();
@@ -104,7 +118,6 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
       console.log('API not available, falling back to localStorage', e);
     }
 
-    // ローカルストレージから読み込み
     try {
       const saved = localStorage.getItem('scheduled_posts');
       if (saved) {
@@ -132,6 +145,11 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     fetchScheduledPosts();
   }, [fetchScheduledPosts]);
 
+  // 選択状態をリセット
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [statusFilter]);
+
   // ローカル保存
   const saveToLocal = (newPosts: ScheduledPost[]) => {
     setPosts(newPosts);
@@ -140,9 +158,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
   // スケジュール投稿を追加
   const handleAddPost = async () => {
-    if (!newPostText.trim() || !newPostDate || !newPostTime) {
-      return;
-    }
+    if (!newPostText.trim() || !newPostDate || !newPostTime) return;
 
     setAdding(true);
     setError(null);
@@ -155,7 +171,6 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
       return;
     }
 
-    // APIに保存を試みる
     if (useApi && accountId) {
       try {
         const response = await fetch('/api/scheduled', {
@@ -189,7 +204,6 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
       }
     }
 
-    // ローカルストレージに保存
     const newPost: ScheduledPost = {
       id: `schedule-${Date.now()}`,
       text: newPostText,
@@ -211,12 +225,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   const handleDeletePost = async (id: string) => {
     if (!confirm('この予約投稿を削除しますか？')) return;
 
-    // APIから削除を試みる
     if (useApi) {
       try {
-        const response = await fetch(`/api/scheduled?id=${id}`, {
-          method: 'DELETE',
-        });
+        const response = await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
         if (response.ok) {
           await fetchScheduledPosts();
           if (onRefresh) onRefresh();
@@ -231,17 +242,147 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     if (onRefresh) onRefresh();
   };
 
-  // ステータスに応じた表示
+  // 一括削除
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`${selectedIds.size}件の予約投稿を削除しますか？`)) return;
+
+    setBulkDeleting(true);
+
+    if (useApi) {
+      for (const id of selectedIds) {
+        try {
+          await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
+        } catch (e) {
+          console.error('Bulk delete failed for', id, e);
+        }
+      }
+      await fetchScheduledPosts();
+    } else {
+      saveToLocal(posts.filter(p => !selectedIds.has(p.id)));
+    }
+
+    setSelectedIds(new Set());
+    setBulkDeleting(false);
+    if (onRefresh) onRefresh();
+  };
+
+  // 選択トグル
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // 全選択/全解除
+  const toggleSelectAll = () => {
+    const filteredPending = filteredPosts.filter(p => p.status === 'pending');
+    if (selectedIds.size === filteredPending.length && filteredPending.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredPending.map(p => p.id)));
+    }
+  };
+
+  // 編集開始
+  const startEdit = (post: ScheduledPost) => {
+    setEditingId(post.id);
+    setEditText(post.text || '');
+    const date = new Date(post.scheduledAt);
+    setEditDate(date.toISOString().split('T')[0]);
+    setEditTime(date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false }));
+  };
+
+  // 編集保存
+  const handleSaveEdit = async () => {
+    if (!editingId || !editText.trim() || !editDate || !editTime) return;
+
+    setSaving(true);
+    setError(null);
+
+    const scheduledAt = new Date(`${editDate}T${editTime}`);
+    if (scheduledAt <= new Date()) {
+      setError('未来の日時を指定してください');
+      setSaving(false);
+      return;
+    }
+
+    if (useApi) {
+      // API: 削除して再作成（既存APIにPUT/PATCHがないため）
+      try {
+        await fetch(`/api/scheduled?id=${editingId}`, { method: 'DELETE' });
+
+        if (accountId) {
+          const response = await fetch('/api/scheduled', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              accountId,
+              type: 'text',
+              text: editText,
+              scheduledAt: scheduledAt.toISOString(),
+            }),
+          });
+
+          if (!response.ok) {
+            const data = await response.json();
+            setError(data.error || '保存に失敗しました');
+            setSaving(false);
+            return;
+          }
+        }
+
+        await fetchScheduledPosts();
+      } catch (e) {
+        console.error('Edit save failed', e);
+        setError('保存に失敗しました');
+      }
+    } else {
+      const updated = posts.map(p =>
+        p.id === editingId
+          ? { ...p, text: editText, scheduledAt: scheduledAt.toISOString() }
+          : p
+      );
+      saveToLocal(updated);
+    }
+
+    setEditingId(null);
+    setEditText('');
+    setEditDate('');
+    setEditTime('');
+    setSaving(false);
+    if (onRefresh) onRefresh();
+  };
+
+  // CSVエクスポート
+  const handleExportCsv = () => {
+    const csv = exportScheduledPostsToCsv(posts);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `scheduled-posts-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ステータスバッジ
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':
-        return <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">予約中</span>;
+        return <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">予約中</span>;
       case 'processing':
-        return <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">処理中</span>;
+        return <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">処理中</span>;
       case 'completed':
-        return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">完了</span>;
+        return <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">完了</span>;
       case 'failed':
-        return <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">失敗</span>;
+        return <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">失敗</span>;
       default:
         return null;
     }
@@ -259,10 +400,28 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     });
   };
 
-  // 今日以降の日付を取得
-  const getMinDate = () => {
-    return new Date().toISOString().split('T')[0];
+  const getMinDate = () => new Date().toISOString().split('T')[0];
+
+  // フィルター適用
+  const filteredPosts = posts.filter(p => {
+    if (statusFilter === 'all') return true;
+    return p.status === statusFilter;
+  });
+
+  // ステータス別カウント
+  const counts = {
+    all: posts.length,
+    pending: posts.filter(p => p.status === 'pending').length,
+    completed: posts.filter(p => p.status === 'completed').length,
+    failed: posts.filter(p => p.status === 'failed').length,
   };
+
+  const filterTabs: { key: StatusFilter; label: string; count: number }[] = [
+    { key: 'all', label: '全て', count: counts.all },
+    { key: 'pending', label: '予約中', count: counts.pending },
+    { key: 'completed', label: '完了', count: counts.completed },
+    { key: 'failed', label: '失敗', count: counts.failed },
+  ];
 
   return (
     <div className="space-y-6">
@@ -275,9 +434,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
               投稿を予約して自動的に投稿されるようにスケジュールできます
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {useApi && (
-              <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+              <span className="px-2 py-1 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full">
                 サーバー連携中
               </span>
             )}
@@ -287,6 +446,26 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
             >
               + 新規予約
             </button>
+            {accountId && (
+              <button
+                onClick={() => setShowCsvImport(true)}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
+              >
+                CSVインポート
+              </button>
+            )}
+            {posts.length > 0 && (
+              <button
+                onClick={handleExportCsv}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-sm"
+                title="CSVエクスポート"
+              >
+                <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                エクスポート
+              </button>
+            )}
             <button
               onClick={fetchScheduledPosts}
               disabled={loading}
@@ -308,7 +487,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                   value={newPostText}
                   onChange={(e) => setNewPostText(e.target.value)}
                   placeholder="投稿内容を入力..."
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900"
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
                   maxLength={500}
                 />
                 <p className="text-xs text-slate-400 mt-1 text-right">{newPostText.length}/500</p>
@@ -321,7 +500,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                     value={newPostDate}
                     onChange={(e) => setNewPostDate(e.target.value)}
                     min={getMinDate()}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white"
                   />
                 </div>
                 <div>
@@ -330,14 +509,14 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                     type="time"
                     value={newPostTime}
                     onChange={(e) => setNewPostTime(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white"
                   />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                 >
                   キャンセル
                 </button>
@@ -354,7 +533,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         )}
 
         {error && (
-          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
             {error}
           </div>
         )}
@@ -375,63 +554,227 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         </div>
       </div>
 
+      {/* 統計サマリー */}
+      {posts.length > 0 && (
+        <div className="grid grid-cols-4 gap-3">
+          {filterTabs.map(tab => (
+            <div
+              key={tab.key}
+              className={`bg-white dark:bg-slate-900 rounded-xl border p-3 text-center cursor-pointer transition-colors ${
+                statusFilter === tab.key
+                  ? 'border-indigo-500 dark:border-indigo-400'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+              onClick={() => setStatusFilter(tab.key)}
+            >
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">{tab.count}</p>
+              <p className="text-xs text-slate-500">{tab.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 一括操作バー */}
+      {selectedIds.size > 0 && (
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 flex items-center justify-between">
+          <span className="text-sm text-indigo-700 dark:text-indigo-400 font-medium">
+            {selectedIds.size}件選択中
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+            >
+              選択解除
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+            >
+              {bulkDeleting ? '削除中...' : '一括削除'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 予約投稿一覧 */}
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        {/* フィルタータブ（投稿がある場合のみ） */}
+        {posts.length > 0 && (
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-2">
+            <div className="flex items-center gap-1">
+              {filterTabs.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setStatusFilter(tab.key)}
+                  className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                    statusFilter === tab.key
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium'
+                      : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {tab.label} ({tab.count})
+                </button>
+              ))}
+            </div>
+            {filteredPosts.some(p => p.status === 'pending') && (
+              <button
+                onClick={toggleSelectAll}
+                className="text-xs text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+              >
+                {selectedIds.size === filteredPosts.filter(p => p.status === 'pending').length && filteredPosts.filter(p => p.status === 'pending').length > 0
+                  ? '全解除'
+                  : '全選択'}
+              </button>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <div className="p-8 text-center">
             <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-slate-500 mt-2">読み込み中...</p>
           </div>
-        ) : posts.length === 0 ? (
+        ) : filteredPosts.length === 0 ? (
           <div className="p-8 text-center">
             <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <p className="text-slate-600 dark:text-slate-400 font-medium">予約投稿がありません</p>
-            <p className="text-sm text-slate-500 mt-1">上の「新規予約」ボタンから投稿を予約できます</p>
+            <p className="text-slate-600 dark:text-slate-400 font-medium">
+              {statusFilter === 'all' ? '予約投稿がありません' : `${filterTabs.find(t => t.key === statusFilter)?.label}の投稿はありません`}
+            </p>
+            {statusFilter === 'all' && (
+              <p className="text-sm text-slate-500 mt-1">
+                「新規予約」ボタンまたは「CSVインポート」から投稿を予約できます
+              </p>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-slate-200 dark:divide-slate-700">
-            {posts
+            {filteredPosts
               .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
               .map((post) => (
                 <div key={post.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        {getStatusBadge(post.status)}
-                        <span className="text-sm text-slate-500">
-                          {formatDateTime(post.scheduledAt)}
-                        </span>
+                  {/* 編集モード */}
+                  {editingId === post.id ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
+                        maxLength={500}
+                      />
+                      <p className="text-xs text-slate-400 text-right">{editText.length}/500</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="date"
+                          value={editDate}
+                          onChange={(e) => setEditDate(e.target.value)}
+                          min={getMinDate()}
+                          className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white text-sm"
+                        />
+                        <input
+                          type="time"
+                          value={editTime}
+                          onChange={(e) => setEditTime(e.target.value)}
+                          className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white text-sm"
+                        />
                       </div>
-                      <p className="text-slate-900 dark:text-white whitespace-pre-wrap break-words">
-                        {post.text}
-                      </p>
-                      {post.errorMessage && (
-                        <p className="text-sm text-red-600 mt-2">
-                          エラー: {post.errorMessage}
-                        </p>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          onClick={handleSaveEdit}
+                          disabled={saving || !editText.trim() || !editDate || !editTime}
+                          className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          {saving ? '保存中...' : '保存'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        {/* チェックボックス（pending のみ） */}
+                        {post.status === 'pending' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(post.id)}
+                            onChange={() => toggleSelect(post.id)}
+                            className="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 dark:border-slate-600 focus:ring-indigo-500"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            {getStatusBadge(post.status)}
+                            <span className="text-sm text-slate-500">
+                              {formatDateTime(post.scheduledAt)}
+                            </span>
+                            {post.type && post.type !== 'text' && (
+                              <span className="px-2 py-0.5 text-xs rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                {post.type}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-slate-900 dark:text-white whitespace-pre-wrap break-words">
+                            {post.text}
+                          </p>
+                          {post.errorMessage && (
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+                              エラー: {post.errorMessage}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {post.status === 'pending' && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => startEdit(post)}
+                            className="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
+                            title="編集"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDeletePost(post.id)}
+                            className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                            title="削除"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
                       )}
                     </div>
-                    {post.status === 'pending' && (
-                      <button
-                        onClick={() => handleDeletePost(post.id)}
-                        className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                        title="削除"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               ))}
           </div>
         )}
       </div>
+
+      {/* CSVインポートモーダル */}
+      {accountId && (
+        <CsvImportModal
+          isOpen={showCsvImport}
+          onClose={() => setShowCsvImport(false)}
+          accountId={accountId}
+          onImportComplete={() => {
+            fetchScheduledPosts();
+            if (onRefresh) onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }
