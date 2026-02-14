@@ -13,6 +13,7 @@ export const authConfig: NextAuthConfig = {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+      allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
           prompt: 'consent',
@@ -72,18 +73,23 @@ export const authConfig: NextAuthConfig = {
   },
   callbacks: {
     async signIn({ user, account }) {
-      // Google認証の場合、初回ログイン時にSTANDARDロールを設定
-      if (account?.provider === 'google' && prisma) {
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-        });
+      try {
+        // Google認証の場合、初回ログイン時にSTANDARDロールを設定
+        if (account?.provider === 'google' && prisma && user.email) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email },
+          });
 
-        if (!existingUser) {
-          // 新規ユーザーはSTANDARDロールで作成される（デフォルト）
-          return true;
+          if (!existingUser) {
+            // 新規ユーザーはSTANDARDロールで作成される（デフォルト）
+            return true;
+          }
         }
+        return true;
+      } catch (error) {
+        console.error('[Auth] signIn callback error:', error);
+        return true; // エラーでもログインは許可する
       }
-      return true;
     },
     async jwt({ token, user, account, trigger }) {
       if (user) {

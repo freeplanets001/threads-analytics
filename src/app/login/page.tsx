@@ -13,7 +13,24 @@ function LoginForm() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(errorParam ? 'ログインに失敗しました。もう一度お試しください。' : '');
+  const getErrorMessage = (err: string | null) => {
+    if (!err) return '';
+    switch (err) {
+      case 'Configuration':
+        return '認証設定エラーが発生しました。管理者にお問い合わせください。(Configuration)';
+      case 'OAuthAccountNotLinked':
+        return 'このメールアドレスは別の認証方法で登録されています。(OAuthAccountNotLinked)';
+      case 'OAuthCallbackError':
+        return 'OAuth認証コールバックでエラーが発生しました。(OAuthCallbackError)';
+      case 'OAuthSignin':
+        return 'OAuth認証の開始に失敗しました。(OAuthSignin)';
+      case 'MissingCSRF':
+        return 'CSRFトークンが見つかりません。ページをリロードしてお試しください。(MissingCSRF)';
+      default:
+        return `ログインに失敗しました。(${err})`;
+    }
+  };
+  const [error, setError] = useState(getErrorMessage(errorParam));
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
