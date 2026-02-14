@@ -6,6 +6,7 @@ import { prisma, isDatabaseAvailable } from '@/lib/db';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 
 export const authConfig: NextAuthConfig = {
+  debug: true,
   adapter: prisma ? PrismaAdapter(prisma) : undefined,
   providers: [
     // Google OAuth
