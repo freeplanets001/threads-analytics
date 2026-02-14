@@ -7,7 +7,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter';
 
 export const authConfig: NextAuthConfig = {
   debug: true,
-  adapter: prisma ? PrismaAdapter(prisma) : undefined,
+  // adapter: prisma ? PrismaAdapter(prisma) : undefined, // 一時的に無効化してOAuth動作テスト
   providers: [
     // Google OAuth
     Google({
