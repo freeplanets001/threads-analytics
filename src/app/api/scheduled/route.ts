@@ -144,7 +144,6 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const ids = searchParams.get('ids');
     const all = searchParams.get('all');
 
     // 全件削除（pending のみ）
@@ -159,25 +158,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: true, deleted: result.count });
     }
 
-    // 一括削除（IDリスト）
-    if (ids) {
-      const idList = ids.split(',').filter(Boolean);
-      if (idList.length === 0) {
-        return NextResponse.json({ error: 'No IDs provided' }, { status: 400 });
-      }
-
-      const result = await prisma.scheduledPost.deleteMany({
-        where: {
-          id: { in: idList },
-          userId: session.user.id,
-          status: 'pending',
-        },
-      });
-      return NextResponse.json({ success: true, deleted: result.count });
-    }
-
-    // 単一削除
+    // 一括削除（リクエストボディからIDリスト取得）
     if (!id) {
+      try {
+        const body = await request.json();
+        if (body.ids && Array.isArray(body.ids) && body.ids.length > 0) {
+          const result = await prisma.scheduledPost.deleteMany({
+            where: {
+              id: { in: body.ids },
+              userId: session.user.id,
+              status: 'pending',
+            },
+          });
+          return NextResponse.json({ success: true, deleted: result.count });
+        }
+      } catch {
+        // ボディがない場合は単一削除へフォールスルー
+      }
       return NextResponse.json({ error: 'Scheduled post ID required' }, { status: 400 });
     }
 

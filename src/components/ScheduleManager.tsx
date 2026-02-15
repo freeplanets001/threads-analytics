@@ -270,13 +270,22 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     if (!confirm(`${selectedIds.size}件の予約投稿を削除しますか？`)) return;
 
     setBulkDeleting(true);
+    setError(null);
 
     if (useApi) {
       try {
-        const ids = Array.from(selectedIds).join(',');
-        await fetch(`/api/scheduled?ids=${ids}`, { method: 'DELETE' });
+        const res = await fetch('/api/scheduled', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: Array.from(selectedIds) }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error || '削除に失敗しました');
+        }
       } catch (e) {
         console.error('Bulk delete failed', e);
+        setError('削除に失敗しました');
       }
       await fetchScheduledPosts();
     } else {
