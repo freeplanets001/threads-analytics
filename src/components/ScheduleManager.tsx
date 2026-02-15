@@ -52,7 +52,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
   // 編集
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editType, setEditType] = useState<string>('text');
   const [editText, setEditText] = useState('');
+  const [editThreadPosts, setEditThreadPosts] = useState<Array<{ text: string }>>([]);
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
   const [saving, setSaving] = useState(false);
@@ -344,15 +346,39 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   // 編集開始
   const startEdit = (post: ScheduledPost) => {
     setEditingId(post.id);
-    setEditText(post.text || '');
+    setEditType(post.type || 'text');
+    if (post.type === 'thread' && post.threadPosts) {
+      try {
+        const threads = JSON.parse(post.threadPosts) as Array<{ text: string }>;
+        setEditThreadPosts(threads);
+        setEditText('');
+      } catch {
+        setEditThreadPosts([]);
+        setEditText(post.text || '');
+      }
+    } else {
+      setEditText(post.text || '');
+      setEditThreadPosts([]);
+    }
     const date = new Date(post.scheduledAt);
     setEditDate(date.toISOString().split('T')[0]);
-    setEditTime(date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false }));
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    setEditTime(`${hours}:${minutes}`);
+  };
+
+  // 編集バリデーション
+  const isEditValid = () => {
+    if (!editDate || !editTime) return false;
+    if (editType === 'thread') {
+      return editThreadPosts.length >= 2 && editThreadPosts.every(p => p.text.trim().length > 0);
+    }
+    return editText.trim().length > 0;
   };
 
   // 編集保存
   const handleSaveEdit = async () => {
-    if (!editingId || !editText.trim() || !editDate || !editTime) return;
+    if (!editingId || !isEditValid()) return;
 
     setSaving(true);
     setError(null);
@@ -370,15 +396,21 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         await fetch(`/api/scheduled?id=${editingId}`, { method: 'DELETE' });
 
         if (accountId) {
+          const body: Record<string, unknown> = {
+            accountId,
+            type: editType,
+            scheduledAt: scheduledAt.toISOString(),
+          };
+          if (editType === 'thread') {
+            body.threadPosts = editThreadPosts;
+          } else {
+            body.text = editText;
+          }
+
           const response = await fetch('/api/scheduled', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              accountId,
-              type: 'text',
-              text: editText,
-              scheduledAt: scheduledAt.toISOString(),
-            }),
+            body: JSON.stringify(body),
           });
 
           if (!response.ok) {
@@ -395,16 +427,20 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         setError('保存に失敗しました');
       }
     } else {
-      const updated = posts.map(p =>
-        p.id === editingId
-          ? { ...p, text: editText, scheduledAt: scheduledAt.toISOString() }
-          : p
-      );
+      const updated = posts.map(p => {
+        if (p.id !== editingId) return p;
+        if (editType === 'thread') {
+          return { ...p, type: editType, text: null, threadPosts: JSON.stringify(editThreadPosts), scheduledAt: scheduledAt.toISOString() };
+        }
+        return { ...p, type: editType, text: editText, threadPosts: null, scheduledAt: scheduledAt.toISOString() };
+      });
       saveToLocal(updated);
     }
 
     setEditingId(null);
+    setEditType('text');
     setEditText('');
+    setEditThreadPosts([]);
     setEditDate('');
     setEditTime('');
     setSaving(false);
@@ -460,17 +496,15 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
   // 投稿内容の表示テキストを取得
   const getPostDisplayText = (post: ScheduledPost): string => {
-    if (post.text) return post.text;
     if (post.type === 'thread' && post.threadPosts) {
       try {
         const threads = JSON.parse(post.threadPosts) as Array<{ text: string }>;
-        const firstText = threads[0]?.text || '';
-        const preview = firstText.length > 60 ? firstText.substring(0, 60) + '...' : firstText;
-        return `[スレッド ${threads.length}件] ${preview}`;
+        return threads.map((t, i) => `${i + 1}. ${t.text}`).join('\n');
       } catch {
-        return '[スレッド]';
+        return post.text || '(内容なし)';
       }
     }
+    if (post.text) return post.text;
     return '(内容なし)';
   };
 
@@ -874,13 +908,52 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                   {/* 編集モード */}
                   {editingId === post.id ? (
                     <div className="space-y-3">
-                      <textarea
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
-                        maxLength={500}
-                      />
-                      <p className="text-xs text-slate-400 text-right">{editText.length}/500</p>
+                      {editType === 'thread' ? (
+                        <>
+                          <label className="block text-xs text-slate-500 font-medium">スレッド編集</label>
+                          {editThreadPosts.map((tp, index) => (
+                            <div key={index} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-medium text-slate-500">投稿 {index + 1}</span>
+                                {editThreadPosts.length > 2 && (
+                                  <button
+                                    onClick={() => setEditThreadPosts(editThreadPosts.filter((_, i) => i !== index))}
+                                    className="text-xs text-red-500 hover:text-red-700"
+                                  >
+                                    削除
+                                  </button>
+                                )}
+                              </div>
+                              <textarea
+                                value={tp.text}
+                                onChange={(e) => {
+                                  const updated = [...editThreadPosts];
+                                  updated[index] = { text: e.target.value };
+                                  setEditThreadPosts(updated);
+                                }}
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16 resize-none dark:bg-slate-900 dark:text-white text-sm"
+                                maxLength={500}
+                              />
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => setEditThreadPosts([...editThreadPosts, { text: '' }])}
+                            className="px-3 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600"
+                          >
+                            + 投稿を追加
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
+                            maxLength={500}
+                          />
+                          <p className="text-xs text-slate-400 text-right">{editText.length}/500</p>
+                        </>
+                      )}
                       <div className="grid grid-cols-2 gap-3">
                         <input
                           type="date"
@@ -905,7 +978,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                         </button>
                         <button
                           onClick={handleSaveEdit}
-                          disabled={saving || !editText.trim() || !editDate || !editTime}
+                          disabled={saving || !isEditValid()}
                           className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                         >
                           {saving ? '保存中...' : '保存'}
