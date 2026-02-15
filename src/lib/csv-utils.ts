@@ -354,7 +354,7 @@ export function generateCsvTemplate(): string {
 export function exportScheduledPostsToCsv(posts: Array<{
   text: string | null;
   threadPosts?: string | null;
-  scheduledAt: string;
+  scheduledAt: string | Date;
   type: string;
   mediaUrls?: string | null;
   status: string;
@@ -364,7 +364,9 @@ export function exportScheduledPostsToCsv(posts: Array<{
   const rows = posts.map(post => {
     const date = new Date(post.scheduledAt);
     const dateStr = date.toISOString().split('T')[0];
-    const timeStr = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
 
     // スレッド投稿の場合、各投稿を ||| で結合してtextカラムに格納
     let textContent = post.text || '';
@@ -378,8 +380,22 @@ export function exportScheduledPostsToCsv(posts: Array<{
     }
 
     const text = textContent.replace(/"/g, '""');
-    const mediaUrls = (post.mediaUrls || '').replace(/"/g, '""');
-    return `"${text}",${dateStr},${timeStr},${post.type},"${mediaUrls}",${post.status}`;
+    // mediaUrlsがJSON文字列の場合、URLのみ抽出
+    let mediaUrlsStr = '';
+    if (post.mediaUrls) {
+      try {
+        const parsed = JSON.parse(post.mediaUrls);
+        if (Array.isArray(parsed)) {
+          mediaUrlsStr = parsed.join(' ');
+        } else {
+          mediaUrlsStr = post.mediaUrls;
+        }
+      } catch {
+        mediaUrlsStr = post.mediaUrls;
+      }
+    }
+    const escapedMediaUrls = mediaUrlsStr.replace(/"/g, '""');
+    return `"${text}",${dateStr},${timeStr},${post.type},"${escapedMediaUrls}",${post.status}`;
   });
 
   return BOM + [header, ...rows].join('\n');

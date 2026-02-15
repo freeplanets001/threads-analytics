@@ -272,12 +272,11 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     setBulkDeleting(true);
 
     if (useApi) {
-      for (const id of selectedIds) {
-        try {
-          await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
-        } catch (e) {
-          console.error('Bulk delete failed for', id, e);
-        }
+      try {
+        const ids = Array.from(selectedIds).join(',');
+        await fetch(`/api/scheduled?ids=${ids}`, { method: 'DELETE' });
+      } catch (e) {
+        console.error('Bulk delete failed', e);
       }
       await fetchScheduledPosts();
     } else {
@@ -298,12 +297,10 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     setBulkDeleting(true);
 
     if (useApi) {
-      for (const post of pendingPosts) {
-        try {
-          await fetch(`/api/scheduled?id=${post.id}`, { method: 'DELETE' });
-        } catch (e) {
-          console.error('Delete all failed for', post.id, e);
-        }
+      try {
+        await fetch('/api/scheduled?all=pending', { method: 'DELETE' });
+      } catch (e) {
+        console.error('Delete all failed', e);
       }
       await fetchScheduledPosts();
     } else {
@@ -416,8 +413,13 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     const a = document.createElement('a');
     a.href = url;
     a.download = `scheduled-posts-${new Date().toISOString().split('T')[0]}.csv`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
   };
 
   // ステータスバッジ
