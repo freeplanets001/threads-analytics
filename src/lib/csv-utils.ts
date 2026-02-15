@@ -249,9 +249,22 @@ export function parseCSV(content: string): CsvParseResult {
 export function validateCsvRow(row: CsvRow, rowNumber: number): CsvValidationError[] {
   const errors: CsvValidationError[] = [];
 
-  // text: 必須、500文字以下
+  // text: 必須、500文字以下（スレッドの場合は ||| 区切りで各パート500文字以下）
   if (!row.text || row.text.trim() === '') {
     errors.push({ row: rowNumber, field: 'text', message: 'テキストは必須です' });
+  } else if (row.type?.toLowerCase().trim() === 'thread') {
+    const parts = row.text.split('|||').map(p => p.trim());
+    if (parts.length < 2) {
+      errors.push({ row: rowNumber, field: 'text', message: 'スレッドは ||| で区切って2つ以上の投稿を指定してください' });
+    } else {
+      parts.forEach((part, i) => {
+        if (!part) {
+          errors.push({ row: rowNumber, field: 'text', message: `スレッド投稿${i + 1}が空です` });
+        } else if (part.length > 500) {
+          errors.push({ row: rowNumber, field: 'text', message: `スレッド投稿${i + 1}が500文字を超えています（${part.length}文字）` });
+        }
+      });
+    }
   } else if (row.text.length > 500) {
     errors.push({ row: rowNumber, field: 'text', message: `テキストが500文字を超えています（${row.text.length}文字）` });
   }
@@ -333,12 +346,14 @@ export function generateCsvTemplate(): string {
     `"おはようございます！今日も一日頑張りましょう",${dateStr},08:00,text,`,
     `"新しいプロジェクトを始めました！詳細はプロフィールリンクから",${dateStr},12:00,text,`,
     `"今日のランチはカレーでした🍛",${dateStr2},19:00,text,`,
+    `"スレッドの1つ目の投稿|||スレッドの2つ目の投稿|||スレッドの3つ目の投稿",${dateStr2},20:00,thread,`,
   ].join('\n');
 }
 
 // 予約投稿をCSVエクスポート
 export function exportScheduledPostsToCsv(posts: Array<{
   text: string | null;
+  threadPosts?: string | null;
   scheduledAt: string;
   type: string;
   mediaUrls?: string | null;
@@ -350,7 +365,19 @@ export function exportScheduledPostsToCsv(posts: Array<{
     const date = new Date(post.scheduledAt);
     const dateStr = date.toISOString().split('T')[0];
     const timeStr = date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const text = (post.text || '').replace(/"/g, '""');
+
+    // スレッド投稿の場合、各投稿を ||| で結合してtextカラムに格納
+    let textContent = post.text || '';
+    if (post.type === 'thread' && post.threadPosts) {
+      try {
+        const threads = JSON.parse(post.threadPosts) as Array<{ text: string }>;
+        textContent = threads.map(t => t.text).join('|||');
+      } catch {
+        textContent = post.text || '';
+      }
+    }
+
+    const text = textContent.replace(/"/g, '""');
     const mediaUrls = (post.mediaUrls || '').replace(/"/g, '""');
     return `"${text}",${dateStr},${timeStr},${post.type},"${mediaUrls}",${post.status}`;
   });

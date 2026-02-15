@@ -133,16 +133,26 @@ export function CsvImportModal({ isOpen, onClose, accountId, onImportComplete }:
       const scheduledAt = new Date(`${row.scheduledDate.trim()}T${row.scheduledTime.trim()}`);
 
       try {
+        const rowType = row.type?.toLowerCase().trim() || 'text';
+        const body: Record<string, unknown> = {
+          accountId,
+          type: rowType,
+          scheduledAt: scheduledAt.toISOString(),
+        };
+
+        if (rowType === 'thread') {
+          // スレッド投稿: ||| 区切りのテキストを threadPosts 配列に変換
+          const parts = row.text.split('|||').map(p => p.trim());
+          body.threadPosts = parts.map(text => ({ text }));
+        } else {
+          body.text = row.text;
+          if (row.mediaUrls) body.mediaUrls = [row.mediaUrls.trim()];
+        }
+
         const res = await fetch('/api/scheduled', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accountId,
-            type: row.type?.toLowerCase().trim() || 'text',
-            text: row.text,
-            mediaUrls: row.mediaUrls ? [row.mediaUrls.trim()] : undefined,
-            scheduledAt: scheduledAt.toISOString(),
-          }),
+          body: JSON.stringify(body),
         });
 
         if (res.ok) {
@@ -279,7 +289,7 @@ export function CsvImportModal({ isOpen, onClose, accountId, onImportComplete }:
                         <tr>
                           <td className="py-1 pr-4"><code className="bg-slate-200 dark:bg-slate-700 px-1 rounded">type</code></td>
                           <td className="py-1 pr-4 text-slate-400">任意</td>
-                          <td className="py-1">text / image / video（デフォルト: text）</td>
+                          <td className="py-1">text / thread / image / video（デフォルト: text）</td>
                         </tr>
                         <tr>
                           <td className="py-1 pr-4"><code className="bg-slate-200 dark:bg-slate-700 px-1 rounded">mediaUrls</code></td>
@@ -293,6 +303,8 @@ export function CsvImportModal({ isOpen, onClose, accountId, onImportComplete }:
                     日本語のカラム名（テキスト、投稿日、投稿時間など）にも対応しています。
                     <br />
                     日付と時間を1カラムにまとめる場合は <code className="bg-slate-200 dark:bg-slate-700 px-1 rounded">2026-03-01T10:00</code> の形式も可能です。
+                    <br />
+                    スレッド投稿はtypeを <code className="bg-slate-200 dark:bg-slate-700 px-1 rounded">thread</code> にし、textカラムに <code className="bg-slate-200 dark:bg-slate-700 px-1 rounded">|||</code> 区切りで各投稿を記載します。
                   </p>
                 </div>
               </div>
