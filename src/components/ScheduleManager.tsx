@@ -47,6 +47,8 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   // 一括選択
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
 
   // 編集
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -264,13 +266,11 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     if (onRefresh) onRefresh();
   };
 
-  // 一括削除
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`${selectedIds.size}件の予約投稿を削除しますか？`)) return;
-
+  // 一括削除（実行）
+  const executeBulkDelete = async () => {
     setBulkDeleting(true);
     setError(null);
+    setConfirmingBulkDelete(false);
 
     if (useApi) {
       try {
@@ -297,13 +297,10 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     if (onRefresh) onRefresh();
   };
 
-  // 全件削除（pending のみ）
-  const handleDeleteAll = async () => {
-    const pendingPosts = posts.filter(p => p.status === 'pending');
-    if (pendingPosts.length === 0) return;
-    if (!confirm(`予約中の投稿 ${pendingPosts.length}件を全て削除しますか？この操作は取り消せません。`)) return;
-
+  // 全件削除（実行）
+  const executeDeleteAll = async () => {
     setBulkDeleting(true);
+    setConfirmingDeleteAll(false);
 
     if (useApi) {
       try {
@@ -552,9 +549,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                   </svg>
                   エクスポート
                 </button>
-                {counts.pending > 0 && (
+                {counts.pending > 0 && !confirmingDeleteAll && (
                   <button
-                    onClick={handleDeleteAll}
+                    onClick={() => setConfirmingDeleteAll(true)}
                     disabled={bulkDeleting}
                     className="px-3 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 text-sm disabled:opacity-50"
                     title="予約中の投稿を全件削除"
@@ -564,6 +561,26 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                     </svg>
                     {bulkDeleting ? '削除中...' : '全件削除'}
                   </button>
+                )}
+                {confirmingDeleteAll && (
+                  <>
+                    <span className="text-xs text-red-600 dark:text-red-400">
+                      {counts.pending}件全て削除しますか？
+                    </span>
+                    <button
+                      onClick={() => setConfirmingDeleteAll(false)}
+                      className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={executeDeleteAll}
+                      disabled={bulkDeleting}
+                      className="px-3 py-1.5 text-sm bg-red-700 text-white rounded-lg hover:bg-red-800 disabled:opacity-50 font-medium"
+                    >
+                      {bulkDeleting ? '削除中...' : '全件削除する'}
+                    </button>
+                  </>
                 )}
               </>
             )}
@@ -747,25 +764,50 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
       {/* 一括操作バー */}
       {selectedIds.size > 0 && (
-        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3 flex items-center justify-between">
-          <span className="text-sm text-indigo-700 dark:text-indigo-400 font-medium">
-            {selectedIds.size}件選択中
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-            >
-              選択解除
-            </button>
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkDeleting}
-              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-            >
-              {bulkDeleting ? '削除中...' : '一括削除'}
-            </button>
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-indigo-700 dark:text-indigo-400 font-medium">
+              {selectedIds.size}件選択中
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setSelectedIds(new Set()); setConfirmingBulkDelete(false); }}
+                className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                選択解除
+              </button>
+              {!confirmingBulkDelete ? (
+                <button
+                  onClick={() => setConfirmingBulkDelete(true)}
+                  disabled={bulkDeleting}
+                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                >
+                  {bulkDeleting ? '削除中...' : '一括削除'}
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setConfirmingBulkDelete(false)}
+                    className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={executeBulkDelete}
+                    disabled={bulkDeleting}
+                    className="px-3 py-1.5 text-sm bg-red-700 text-white rounded-lg hover:bg-red-800 disabled:opacity-50 font-medium"
+                  >
+                    {bulkDeleting ? '削除中...' : `${selectedIds.size}件を削除する`}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
+          {confirmingBulkDelete && (
+            <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+              {selectedIds.size}件の予約投稿を削除します。この操作は取り消せません。
+            </p>
+          )}
         </div>
       )}
 
