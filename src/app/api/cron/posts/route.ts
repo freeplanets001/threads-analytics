@@ -107,6 +107,7 @@ async function processPost(post: {
   type: string;
   text: string | null;
   mediaUrls: string | null;
+  threadPosts: string | null;
   account: { accessToken: string };
 }): Promise<{ status: string; error?: string }> {
   try {
@@ -121,29 +122,41 @@ async function processPost(post: {
     let postedId: string;
 
     // 投稿タイプに応じて処理
-    if (post.type === 'text' || !post.mediaUrls) {
+    if (post.type === 'text' || (!post.mediaUrls && !post.threadPosts)) {
       // テキスト投稿
       const result = await client.postText(post.text || '');
       postedId = result.id;
     } else if (post.type === 'image') {
       // 画像投稿
-      const mediaUrls = JSON.parse(post.mediaUrls) as string[];
+      const mediaUrls = JSON.parse(post.mediaUrls!) as string[];
       const result = await client.postImage(mediaUrls[0], post.text || undefined);
       postedId = result.id;
     } else if (post.type === 'video') {
       // 動画投稿
-      const mediaUrls = JSON.parse(post.mediaUrls) as string[];
+      const mediaUrls = JSON.parse(post.mediaUrls!) as string[];
       const result = await client.postVideo(mediaUrls[0], post.text || undefined);
       postedId = result.id;
     } else if (post.type === 'carousel') {
       // カルーセル投稿
-      const mediaUrls = JSON.parse(post.mediaUrls) as string[];
+      const mediaUrls = JSON.parse(post.mediaUrls!) as string[];
       const items = mediaUrls.map(url => ({
         type: url.match(/\.(mp4|mov|webm)$/i) ? 'VIDEO' : 'IMAGE' as 'VIDEO' | 'IMAGE',
         url,
       }));
       const result = await client.postCarousel(items, post.text || undefined);
       postedId = result.id;
+    } else if (post.type === 'thread') {
+      // スレッド投稿
+      if (!post.threadPosts) {
+        throw new Error('Thread posts data is missing');
+      }
+      const threadPostsData = JSON.parse(post.threadPosts) as Array<{
+        text: string;
+        imageUrl?: string;
+        videoUrl?: string;
+      }>;
+      const result = await client.postThread(threadPostsData);
+      postedId = result.ids[0];
     } else {
       // テキストとして投稿
       const result = await client.postText(post.text || '');

@@ -607,6 +607,7 @@ export default function AnalyticsDashboard() {
                 <PostComposer
                   key={`compose-${composerKey}`}
                   accessToken={currentAccount.accessToken}
+                  accountId={currentAccount.id}
                   onPostSuccess={fetchData}
                   initialText={initialComposeText}
                   onInitialTextUsed={() => setInitialComposeText('')}

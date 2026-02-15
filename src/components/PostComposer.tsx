@@ -8,6 +8,7 @@ import { ImageGenerator } from './ImageGenerator';
 
 interface PostComposerProps {
   accessToken: string;
+  accountId?: string;
   onPostSuccess?: () => void;
   initialText?: string;
   onInitialTextUsed?: () => void;
@@ -21,7 +22,7 @@ interface ThreadPost {
   videoUrl?: string;
 }
 
-export function PostComposer({ accessToken, onPostSuccess, initialText, onInitialTextUsed }: PostComposerProps) {
+export function PostComposer({ accessToken, accountId, onPostSuccess, initialText, onInitialTextUsed }: PostComposerProps) {
   const [postType, setPostType] = useState<PostType>('text');
   const [text, setText] = useState(initialText || '');
   const [imageUrl, setImageUrl] = useState('');
@@ -41,6 +42,13 @@ export function PostComposer({ accessToken, onPostSuccess, initialText, onInitia
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null);
+
+  // 予約投稿
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleSuccess, setScheduleSuccess] = useState(false);
 
   // 画像生成モーダル
   const [showImageGenerator, setShowImageGenerator] = useState(false);
@@ -129,6 +137,69 @@ export function PostComposer({ accessToken, onPostSuccess, initialText, onInitia
       setError('投稿に失敗しました');
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handleSchedule = async () => {
+    if (!scheduleDate || !scheduleTime || !accountId) return;
+
+    const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`);
+    if (scheduledAt <= new Date()) {
+      setError('未来の日時を指定してください');
+      return;
+    }
+
+    setScheduling(true);
+    setError(null);
+    setScheduleSuccess(false);
+    setSuccess(false);
+
+    try {
+      const body: Record<string, unknown> = {
+        accountId,
+        type: postType,
+        scheduledAt: scheduledAt.toISOString(),
+      };
+
+      if (postType === 'thread') {
+        body.threadPosts = threadPosts;
+      } else {
+        if (text) body.text = text;
+        if (postType === 'image' && imageUrl) {
+          body.mediaUrls = [imageUrl];
+        } else if (postType === 'video' && videoUrl) {
+          body.mediaUrls = [videoUrl];
+        } else if (postType === 'carousel') {
+          body.mediaUrls = carouselItems.map(item => item.url);
+        }
+      }
+
+      const res = await fetch('/api/scheduled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || '予約に失敗しました');
+      } else {
+        setScheduleSuccess(true);
+        setText('');
+        setImageUrl('');
+        setVideoUrl('');
+        setCarouselItems([]);
+        setThreadPosts([{ text: '' }]);
+        setShowSchedulePicker(false);
+        setScheduleDate('');
+        setScheduleTime('');
+        onPostSuccess?.();
+      }
+    } catch {
+      setError('予約に失敗しました');
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -667,6 +738,54 @@ export function PostComposer({ accessToken, onPostSuccess, initialText, onInitia
           投稿が完了しました！
         </p>
       )}
+      {scheduleSuccess && (
+        <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg mb-4">
+          投稿が予約されました！
+        </p>
+      )}
+
+      {/* Schedule Picker */}
+      {showSchedulePicker && accountId && (
+        <div className="mb-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+          <h4 className="text-sm font-medium text-slate-700 mb-3">予約日時を選択</h4>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">日付</label>
+              <input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">時間</label>
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSchedule}
+              disabled={scheduling || !scheduleDate || !scheduleTime}
+              className="flex-1 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {scheduling ? '予約中...' : '予約を確定'}
+            </button>
+            <button
+              onClick={() => setShowSchedulePicker(false)}
+              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex gap-3">
@@ -677,6 +796,15 @@ export function PostComposer({ accessToken, onPostSuccess, initialText, onInitia
         >
           {posting ? '投稿中...' : '投稿する'}
         </button>
+        {accountId && (
+          <button
+            onClick={() => setShowSchedulePicker(!showSchedulePicker)}
+            disabled={posting || (postType === 'text' && !text.trim()) || charCount > maxChars}
+            className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+          >
+            予約投稿
+          </button>
+        )}
       </div>
     </div>
   );

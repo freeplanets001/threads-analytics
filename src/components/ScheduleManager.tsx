@@ -7,6 +7,7 @@ import { exportScheduledPostsToCsv } from '@/lib/csv-utils';
 interface ScheduledPost {
   id: string;
   text: string | null;
+  threadPosts?: string | null;
   scheduledAt: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   errorMessage?: string | null;
@@ -30,7 +31,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
   // 新規スケジュール投稿用
   const [showAddForm, setShowAddForm] = useState(false);
+  const [newPostType, setNewPostType] = useState<'text' | 'thread'>('text');
   const [newPostText, setNewPostText] = useState('');
+  const [newThreadPosts, setNewThreadPosts] = useState<Array<{ text: string }>>([{ text: '' }, { text: '' }]);
   const [newPostDate, setNewPostDate] = useState('');
   const [newPostTime, setNewPostTime] = useState('');
   const [adding, setAdding] = useState(false);
@@ -156,9 +159,28 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     localStorage.setItem('scheduled_posts', JSON.stringify(newPosts));
   };
 
+  // フォームリセット
+  const resetAddForm = () => {
+    setNewPostText('');
+    setNewPostType('text');
+    setNewThreadPosts([{ text: '' }, { text: '' }]);
+    setNewPostDate('');
+    setNewPostTime('');
+    setShowAddForm(false);
+    setAdding(false);
+  };
+
+  // バリデーション
+  const isAddFormValid = () => {
+    if (!newPostDate || !newPostTime) return false;
+    if (newPostType === 'text') return newPostText.trim().length > 0;
+    if (newPostType === 'thread') return newThreadPosts.length >= 2 && newThreadPosts.every(p => p.text.trim().length > 0);
+    return false;
+  };
+
   // スケジュール投稿を追加
   const handleAddPost = async () => {
-    if (!newPostText.trim() || !newPostDate || !newPostTime) return;
+    if (!isAddFormValid()) return;
 
     setAdding(true);
     setError(null);
@@ -173,24 +195,27 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
     if (useApi && accountId) {
       try {
+        const body: Record<string, unknown> = {
+          accountId,
+          type: newPostType,
+          scheduledAt: scheduledAt.toISOString(),
+        };
+
+        if (newPostType === 'thread') {
+          body.threadPosts = newThreadPosts;
+        } else {
+          body.text = newPostText;
+        }
+
         const response = await fetch('/api/scheduled', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accountId,
-            type: 'text',
-            text: newPostText,
-            scheduledAt: scheduledAt.toISOString(),
-          }),
+          body: JSON.stringify(body),
         });
 
         if (response.ok) {
           await fetchScheduledPosts();
-          setNewPostText('');
-          setNewPostDate('');
-          setNewPostTime('');
-          setShowAddForm(false);
-          setAdding(false);
+          resetAddForm();
           if (onRefresh) onRefresh();
           return;
         } else {
@@ -206,18 +231,15 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
     const newPost: ScheduledPost = {
       id: `schedule-${Date.now()}`,
-      text: newPostText,
+      text: newPostType === 'text' ? newPostText : null,
+      threadPosts: newPostType === 'thread' ? JSON.stringify(newThreadPosts) : null,
       scheduledAt: scheduledAt.toISOString(),
       status: 'pending',
-      type: 'text',
+      type: newPostType,
     };
 
     saveToLocal([...posts, newPost]);
-    setNewPostText('');
-    setNewPostDate('');
-    setNewPostTime('');
-    setShowAddForm(false);
-    setAdding(false);
+    resetAddForm();
     if (onRefresh) onRefresh();
   };
 
@@ -402,6 +424,33 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
   const getMinDate = () => new Date().toISOString().split('T')[0];
 
+  // 投稿内容の表示テキストを取得
+  const getPostDisplayText = (post: ScheduledPost): string => {
+    if (post.text) return post.text;
+    if (post.type === 'thread' && post.threadPosts) {
+      try {
+        const threads = JSON.parse(post.threadPosts) as Array<{ text: string }>;
+        const firstText = threads[0]?.text || '';
+        const preview = firstText.length > 60 ? firstText.substring(0, 60) + '...' : firstText;
+        return `[スレッド ${threads.length}件] ${preview}`;
+      } catch {
+        return '[スレッド]';
+      }
+    }
+    return '(内容なし)';
+  };
+
+  // 投稿タイプの日本語ラベル
+  const getTypeLabel = (type: string): string => {
+    switch (type) {
+      case 'thread': return 'スレッド';
+      case 'image': return '画像';
+      case 'video': return '動画';
+      case 'carousel': return 'カルーセル';
+      default: return type;
+    }
+  };
+
   // フィルター適用
   const filteredPosts = posts.filter(p => {
     if (statusFilter === 'all') return true;
@@ -481,17 +530,87 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
           <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
             <h3 className="font-medium text-slate-900 dark:text-white mb-3">新規予約投稿</h3>
             <div className="space-y-4">
+              {/* 投稿タイプ選択 */}
               <div>
-                <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">投稿内容</label>
-                <textarea
-                  value={newPostText}
-                  onChange={(e) => setNewPostText(e.target.value)}
-                  placeholder="投稿内容を入力..."
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
-                  maxLength={500}
-                />
-                <p className="text-xs text-slate-400 mt-1 text-right">{newPostText.length}/500</p>
+                <label className="block text-sm text-slate-600 dark:text-slate-400 mb-2">投稿タイプ</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setNewPostType('text')}
+                    className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${
+                      newPostType === 'text'
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                    }`}
+                  >
+                    テキスト
+                  </button>
+                  <button
+                    onClick={() => setNewPostType('thread')}
+                    className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${
+                      newPostType === 'thread'
+                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 font-medium'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:border-indigo-300'
+                    }`}
+                  >
+                    スレッド
+                  </button>
+                </div>
               </div>
+
+              {/* テキスト投稿 */}
+              {newPostType === 'text' && (
+                <div>
+                  <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">投稿内容</label>
+                  <textarea
+                    value={newPostText}
+                    onChange={(e) => setNewPostText(e.target.value)}
+                    placeholder="投稿内容を入力..."
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
+                    maxLength={500}
+                  />
+                  <p className="text-xs text-slate-400 mt-1 text-right">{newPostText.length}/500</p>
+                </div>
+              )}
+
+              {/* スレッド投稿 */}
+              {newPostType === 'thread' && (
+                <div className="space-y-3">
+                  <label className="block text-sm text-slate-600 dark:text-slate-400">スレッド投稿（2個以上）</label>
+                  {newThreadPosts.map((post, index) => (
+                    <div key={index} className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-slate-500">投稿 {index + 1}</span>
+                        {newThreadPosts.length > 2 && (
+                          <button
+                            onClick={() => setNewThreadPosts(newThreadPosts.filter((_, i) => i !== index))}
+                            className="text-xs text-red-500 hover:text-red-700"
+                          >
+                            削除
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={post.text}
+                        onChange={(e) => {
+                          const updated = [...newThreadPosts];
+                          updated[index] = { text: e.target.value };
+                          setNewThreadPosts(updated);
+                        }}
+                        placeholder={`投稿 ${index + 1} の内容...`}
+                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16 resize-none dark:bg-slate-900 dark:text-white text-sm"
+                        maxLength={500}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setNewThreadPosts([...newThreadPosts, { text: '' }])}
+                    className="px-3 py-1.5 text-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600"
+                  >
+                    + 投稿を追加
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-slate-600 dark:text-slate-400 mb-1">投稿日</label>
@@ -515,14 +634,14 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
               </div>
               <div className="flex justify-end gap-2">
                 <button
-                  onClick={() => setShowAddForm(false)}
+                  onClick={resetAddForm}
                   className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                 >
                   キャンセル
                 </button>
                 <button
                   onClick={handleAddPost}
-                  disabled={adding || !newPostText.trim() || !newPostDate || !newPostTime}
+                  disabled={adding || !isAddFormValid()}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {adding ? '追加中...' : '予約を追加'}
@@ -719,12 +838,12 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                             </span>
                             {post.type && post.type !== 'text' && (
                               <span className="px-2 py-0.5 text-xs rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                {post.type}
+                                {getTypeLabel(post.type)}
                               </span>
                             )}
                           </div>
                           <p className="text-slate-900 dark:text-white whitespace-pre-wrap break-words">
-                            {post.text}
+                            {getPostDisplayText(post)}
                           </p>
                           {post.errorMessage && (
                             <p className="text-sm text-red-600 dark:text-red-400 mt-2">
