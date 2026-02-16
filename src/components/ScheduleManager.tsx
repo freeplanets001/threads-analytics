@@ -668,7 +668,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                     value={newPostText}
                     onChange={(e) => setNewPostText(e.target.value)}
                     placeholder="投稿内容を入力..."
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none text-slate-900 placeholder-slate-400 dark:bg-slate-900 dark:text-white"
                     maxLength={500}
                   />
                   <p className="text-xs text-slate-400 mt-1 text-right">{newPostText.length}/500</p>
@@ -700,7 +700,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                           setNewThreadPosts(updated);
                         }}
                         placeholder={`投稿 ${index + 1} の内容...`}
-                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16 resize-none dark:bg-slate-900 dark:text-white text-sm"
+                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16 resize-none text-slate-900 placeholder-slate-400 dark:bg-slate-900 dark:text-white text-sm"
                         maxLength={500}
                       />
                     </div>
@@ -722,7 +722,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                     value={newPostDate}
                     onChange={(e) => setNewPostDate(e.target.value)}
                     min={getMinDate()}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:bg-slate-900 dark:text-white"
                   />
                 </div>
                 <div>
@@ -731,7 +731,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                     type="time"
                     value={newPostTime}
                     onChange={(e) => setNewPostTime(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:bg-slate-900 dark:text-white"
                   />
                 </div>
               </div>
@@ -931,7 +931,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                                   updated[index] = { text: e.target.value };
                                   setEditThreadPosts(updated);
                                 }}
-                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16 resize-none dark:bg-slate-900 dark:text-white text-sm"
+                                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-16 resize-none text-slate-900 placeholder-slate-400 dark:bg-slate-900 dark:text-white text-sm"
                                 maxLength={500}
                               />
                             </div>
@@ -948,7 +948,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                           <textarea
                             value={editText}
                             onChange={(e) => setEditText(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none dark:bg-slate-900 dark:text-white"
+                            className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none text-slate-900 placeholder-slate-400 dark:bg-slate-900 dark:text-white"
                             maxLength={500}
                           />
                           <p className="text-xs text-slate-400 text-right">{editText.length}/500</p>
@@ -960,13 +960,13 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                           value={editDate}
                           onChange={(e) => setEditDate(e.target.value)}
                           min={getMinDate()}
-                          className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white text-sm"
+                          className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:bg-slate-900 dark:text-white text-sm"
                         />
                         <input
                           type="time"
                           value={editTime}
                           onChange={(e) => setEditTime(e.target.value)}
-                          className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-900 dark:text-white text-sm"
+                          className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:bg-slate-900 dark:text-white text-sm"
                         />
                       </div>
                       <div className="flex justify-end gap-2">

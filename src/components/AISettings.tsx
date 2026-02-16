@@ -255,7 +255,7 @@ export function AISettings({ onClose }: AISettingsProps) {
                   value={threadsAppId}
                   onChange={(e) => setThreadsAppId(e.target.value)}
                   placeholder="123456789012345"
-                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-slate-900 placeholder-slate-400"
                 />
               </div>
 
@@ -268,7 +268,7 @@ export function AISettings({ onClose }: AISettingsProps) {
                   value={threadsAppSecret}
                   onChange={(e) => setThreadsAppSecret(e.target.value)}
                   placeholder="abc123..."
-                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-slate-900 placeholder-slate-400"
                 />
                 <p className="text-xs text-slate-500 mt-1">
                   App Secretは安全のため表示されません
@@ -311,7 +311,7 @@ export function AISettings({ onClose }: AISettingsProps) {
                   value={geminiKey}
                   onChange={(e) => setGeminiKey(e.target.value)}
                   placeholder="AIza..."
-                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-slate-900 placeholder-slate-400"
                 />
                 <p className="text-xs text-slate-500 mt-2">
                   <a
@@ -403,7 +403,7 @@ export function AISettings({ onClose }: AISettingsProps) {
               <textarea
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 h-80 font-mono text-sm resize-none"
+                className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 h-80 font-mono text-sm resize-none text-slate-900 placeholder-slate-400"
                 placeholder="システムプロンプトを入力..."
               />
               <div className="flex justify-between items-center mt-2">

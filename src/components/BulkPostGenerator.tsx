@@ -520,7 +520,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                   value={localApiKey}
                   onChange={(e) => setLocalApiKey(e.target.value)}
                   placeholder="AIza..."
-                  className="flex-1 px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                  className="flex-1 px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm text-slate-900 placeholder-slate-400"
                 />
                 <button
                   onClick={saveApiKey}
@@ -573,7 +573,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                   value={customTopic}
                   onChange={(e) => { setCustomTopic(e.target.value); setSelectedTheme(null); }}
                   placeholder="例: プログラミング学習のコツ、副業のアイデア、etc."
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                 />
               </div>
 
@@ -584,7 +584,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                   <select
                     value={postCount}
                     onChange={(e) => setPostCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900"
                   >
                     {[3, 5, 7, 10, 14, 21, 30].map(n => (
                       <option key={n} value={n}>{n}件</option>
@@ -596,7 +596,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                   <select
                     value={toneStyle}
                     onChange={(e) => setToneStyle(e.target.value as typeof toneStyle)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900"
                   >
                     <option value="casual">カジュアル</option>
                     <option value="professional">プロフェッショナル</option>
@@ -609,7 +609,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                   <select
                     value={maxLength}
                     onChange={(e) => setMaxLength(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900"
                   >
                     <option value={140}>140文字</option>
                     <option value={280}>280文字</option>
@@ -758,7 +758,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
                       min={new Date().toISOString().split('T')[0]}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900"
                     />
                   </div>
                   <div>
@@ -766,7 +766,7 @@ Threads用の投稿を1つだけ生成してください。投稿文のみを出
                     <select
                       value={spreadDays}
                       onChange={(e) => setSpreadDays(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900"
                     >
                       <option value={1}>1日（同日に全て）</option>
                       <option value={3}>3日間</option>

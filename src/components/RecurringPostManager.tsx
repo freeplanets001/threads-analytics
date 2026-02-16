@@ -462,7 +462,7 @@ export function RecurringPostManager({ accessToken, accountId, onRefresh }: Recu
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="例: 朝の挨拶"
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 placeholder-slate-400 dark:bg-slate-800 dark:text-white"
               />
             </div>
 
@@ -484,7 +484,7 @@ export function RecurringPostManager({ accessToken, accountId, onRefresh }: Recu
                 <select
                   value={frequency}
                   onChange={(e) => setFrequency(e.target.value as 'daily' | 'weekly' | 'monthly')}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800"
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 placeholder-slate-400 dark:bg-slate-800 dark:text-white"
                 >
                   <option value="daily">毎日</option>
                   <option value="weekly">毎週</option>
@@ -498,7 +498,7 @@ export function RecurringPostManager({ accessToken, accountId, onRefresh }: Recu
                   <select
                     value={dayOfWeek}
                     onChange={(e) => setDayOfWeek(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 placeholder-slate-400 dark:bg-slate-800 dark:text-white"
                   >
                     {DAYS_OF_WEEK.map((day, i) => (
                       <option key={i} value={i}>{day}曜日</option>
@@ -513,7 +513,7 @@ export function RecurringPostManager({ accessToken, accountId, onRefresh }: Recu
                   <select
                     value={dayOfMonth}
                     onChange={(e) => setDayOfMonth(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 placeholder-slate-400 dark:bg-slate-800 dark:text-white"
                   >
                     {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
                       <option key={day} value={day}>{day}日</option>
@@ -528,7 +528,7 @@ export function RecurringPostManager({ accessToken, accountId, onRefresh }: Recu
                   type="time"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800"
+                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 placeholder-slate-400 dark:bg-slate-800 dark:text-white"
                 />
               </div>
             </div>

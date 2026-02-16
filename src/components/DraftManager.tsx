@@ -180,7 +180,7 @@ export function DraftManager({ accessToken, onSelectDraft, onRefresh, maxDrafts 
                 value={draftTitle}
                 onChange={(e) => setDraftTitle(e.target.value)}
                 placeholder="管理用のタイトル..."
-                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-800"
+                className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400 dark:bg-slate-800 dark:text-white"
               />
             </div>
             <div>

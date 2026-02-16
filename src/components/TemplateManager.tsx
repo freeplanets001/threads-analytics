@@ -275,7 +275,7 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
                   placeholder="例: 朝の挨拶"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                 />
               </div>
               <div>
@@ -283,7 +283,7 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
                 <select
                   value={templateCategory}
                   onChange={(e) => setTemplateCategory(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900"
                 >
                   {CATEGORIES.map(cat => (
                     <option key={cat.id} value={cat.id}>{cat.icon} {cat.name}</option>
@@ -298,7 +298,7 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
                 value={templateDesc}
                 onChange={(e) => setTemplateDesc(e.target.value)}
                 placeholder="このテンプレートの用途..."
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
               />
             </div>
             <div>
@@ -309,7 +309,7 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
                 value={templateText}
                 onChange={(e) => setTemplateText(e.target.value)}
                 placeholder="投稿テンプレートを入力..."
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none font-mono text-sm"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none font-mono text-sm text-slate-900 placeholder-slate-400"
               />
               <div className="mt-2 flex flex-wrap gap-1">
                 <span className="text-xs text-slate-400 mr-1">自動変数:</span>

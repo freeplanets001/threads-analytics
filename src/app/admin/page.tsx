@@ -403,12 +403,12 @@ export default function AdminPanel() {
                           value={userSearch}
                           onChange={(e) => setUserSearch(e.target.value)}
                           placeholder="ユーザーを検索..."
-                          className="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="flex-1 min-w-[200px] px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                         />
                         <select
                           value={userRoleFilter}
                           onChange={(e) => setUserRoleFilter(e.target.value as Role | 'all')}
-                          className="px-4 py-2 border border-slate-200 rounded-lg"
+                          className="px-4 py-2 border border-slate-200 rounded-lg text-slate-900"
                         >
                           <option value="all">全ロール</option>
                           <option value="ADMIN">Admin</option>
@@ -535,7 +535,7 @@ export default function AdminPanel() {
                                       type="text"
                                       value={editSettingValue}
                                       onChange={(e) => setEditSettingValue(e.target.value)}
-                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                                     />
                                   </div>
                                   <div>
@@ -544,7 +544,7 @@ export default function AdminPanel() {
                                       type="text"
                                       value={editSettingDesc}
                                       onChange={(e) => setEditSettingDesc(e.target.value)}
-                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                                     />
                                   </div>
                                   <div className="flex gap-2">
@@ -612,7 +612,7 @@ export default function AdminPanel() {
                             value={newSettingKey}
                             onChange={(e) => setNewSettingKey(e.target.value)}
                             placeholder="setting_key"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                           />
                         </div>
                         <div>
@@ -622,7 +622,7 @@ export default function AdminPanel() {
                             value={newSettingValue}
                             onChange={(e) => setNewSettingValue(e.target.value)}
                             placeholder="値を入力"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                           />
                         </div>
                         <div>
@@ -632,7 +632,7 @@ export default function AdminPanel() {
                             value={newSettingDesc}
                             onChange={(e) => setNewSettingDesc(e.target.value)}
                             placeholder="この設定の説明"
-                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder-slate-400"
                           />
                         </div>
                       </div>

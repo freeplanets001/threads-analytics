@@ -415,7 +415,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="何を投稿しますか？"
-            className={`w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 ${heightMap[textareaHeight]} resize-y transition-all`}
+            className={`w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-slate-900 placeholder-slate-400 ${heightMap[textareaHeight]} resize-y transition-all`}
           />
 
           {/* Hashtag Suggestions */}
@@ -486,7 +486,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
                     placeholder="例: AntiGravity、プログラミング学習、朝活..."
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400"
                   />
                 </div>
 
@@ -499,7 +499,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                     value={aiContext}
                     onChange={(e) => setAiContext(e.target.value)}
                     placeholder="例: AntiGravityは新しいフィットネスジムの名前です。空中ヨガやトランポリンエクササイズが特徴..."
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm h-20 resize-none"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm h-20 resize-none text-slate-900 placeholder-slate-400"
                   />
                   <p className="text-xs text-slate-500 mt-1">
                     テーマについての詳細を書くと、より適切な投稿が生成されます
@@ -588,7 +588,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
               placeholder="https://example.com/image.jpg"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-slate-900 placeholder-slate-400"
             />
           </div>
         </div>
@@ -618,7 +618,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="https://example.com/video.mp4"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 text-slate-900 placeholder-slate-400"
             />
           </div>
         </div>
@@ -659,7 +659,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                   value={item.url}
                   onChange={(e) => updateCarouselItem(index, e.target.value)}
                   placeholder="またはURLを直接入力"
-                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs"
+                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs text-slate-900 placeholder-slate-400"
                 />
               </div>
             </div>
@@ -707,7 +707,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                 value={post.text}
                 onChange={(e) => updateThreadPost(index, { ...post, text: e.target.value })}
                 placeholder="テキスト"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm h-20 resize-none mb-3"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm h-20 resize-none mb-3 text-slate-900 placeholder-slate-400"
               />
 
               {/* 画像アップロード */}
@@ -726,7 +726,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                     value={post.imageUrl || ''}
                     onChange={(e) => updateThreadPost(index, { ...post, imageUrl: e.target.value || undefined })}
                     placeholder="またはURLを直接入力"
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs"
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs text-slate-900 placeholder-slate-400"
                   />
                 </div>
               </div>
@@ -747,7 +747,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                     value={post.videoUrl || ''}
                     onChange={(e) => updateThreadPost(index, { ...post, videoUrl: e.target.value || undefined })}
                     placeholder="またはURLを直接入力"
-                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs"
+                    className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs text-slate-900 placeholder-slate-400"
                   />
                 </div>
               </div>
@@ -792,7 +792,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                 value={scheduleDate}
                 onChange={(e) => setScheduleDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900"
               />
             </div>
             <div>
@@ -801,7 +801,7 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                 type="time"
                 value={scheduleTime}
                 onChange={(e) => setScheduleTime(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900"
               />
             </div>
           </div>
