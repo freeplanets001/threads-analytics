@@ -616,7 +616,7 @@ export default function AnalyticsDashboard() {
                   initialText={initialComposeText}
                   onInitialTextUsed={() => setInitialComposeText('')}
                   suggestedHashtags={data.advancedAnalysis?.hashtags?.map(h => ({
-                    tag: h.tag,
+                    tag: h.hashtag,
                     count: h.count,
                     avgEngagement: h.avgEngagement,
                   }))}
