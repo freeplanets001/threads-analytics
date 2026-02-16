@@ -257,7 +257,7 @@ export default function AnalyticsDashboard() {
     { id: 'bulk', label: 'AI一括生成', permission: 'aiBulkGeneration' },
     { id: 'schedule', label: '予約投稿', permission: 'scheduledPosts' },
     { id: 'recurring', label: '定期投稿', permission: 'recurringPosts' },
-    { id: 'autoreply', label: '自動リプライ', permission: 'recurringPosts' },
+    { id: 'autoreply', label: '自動リプライ', permission: 'autoReply' },
     { id: 'drafts', label: '下書き', permission: 'drafts' },
     { id: 'templates', label: 'テンプレート', permission: 'templates' },
     { id: 'calendar', label: 'カレンダー' },

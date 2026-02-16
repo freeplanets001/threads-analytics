@@ -515,7 +515,7 @@ export function RecurringPostManager({ accessToken, accountId, onRefresh }: Recu
                     onChange={(e) => setDayOfMonth(Number(e.target.value))}
                     className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg dark:bg-slate-800"
                   >
-                    {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
                       <option key={day} value={day}>{day}日</option>
                     ))}
                   </select>

@@ -31,6 +31,7 @@ export interface RolePermissions {
 
   // 自動化
   recurringPosts: boolean;
+  autoReply: boolean;
   autoHashtags: boolean;
 
   // その他
@@ -63,6 +64,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, RolePermissions> = {
     monthlyReports: true,
     exportData: true,
     recurringPosts: true,
+    autoReply: true,
     autoHashtags: true,
     darkMode: true,
     notifications: true,
@@ -88,6 +90,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, RolePermissions> = {
     monthlyReports: true,
     exportData: true,
     recurringPosts: true,
+    autoReply: true,
     autoHashtags: true,
     darkMode: true,
     notifications: true,
@@ -113,6 +116,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, RolePermissions> = {
     monthlyReports: false,
     exportData: false,
     recurringPosts: false,
+    autoReply: false,
     autoHashtags: false,
     darkMode: true,
     notifications: true,

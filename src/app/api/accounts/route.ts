@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // 既存のアカウントを検索
-    const existingAccount = await prisma.threadsAccount.findUnique({
-      where: { threadsUserId },
+    // 既存のアカウントを検索（自分のアカウントのみ）
+    const existingAccount = await prisma.threadsAccount.findFirst({
+      where: { threadsUserId, userId: session.user.id },
     });
 
     // 新規アカウントの場合、プラン別のアカウント数制限をチェック
@@ -89,9 +89,9 @@ export async function POST(request: NextRequest) {
 
     let account;
     if (existingAccount) {
-      // 既存のアカウントを更新
+      // 既存のアカウントを更新（自分のアカウントのみ）
       account = await prisma.threadsAccount.update({
-        where: { threadsUserId },
+        where: { id: existingAccount.id },
         data: {
           username,
           name,

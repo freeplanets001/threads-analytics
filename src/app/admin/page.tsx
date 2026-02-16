@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Role, DEFAULT_PERMISSIONS, getRoleName, getRoleDescription, RolePermissions } from '@/lib/permissions';
 
@@ -24,6 +24,31 @@ interface SystemStats {
   usersByRole: { role: string; count: number }[];
 }
 
+interface SystemSettingItem {
+  id: string;
+  key: string;
+  value: string;
+  description: string | null;
+  updatedAt: string;
+}
+
+interface LogEntry {
+  id: string;
+  type: string;
+  action: string;
+  status: string;
+  detail: string;
+  username?: string;
+  createdAt: string;
+}
+
+interface LogStats {
+  totalScheduled: number;
+  totalAutoReply: number;
+  failedScheduled: number;
+  failedAutoReply: number;
+}
+
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [loading, setLoading] = useState(true);
@@ -42,6 +67,21 @@ export default function AdminPanel() {
   // Roles data
   const [rolePermissions, setRolePermissions] = useState<Record<Role, RolePermissions>>(DEFAULT_PERMISSIONS);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
+
+  // Settings data
+  const [settings, setSettings] = useState<SystemSettingItem[]>([]);
+  const [newSettingKey, setNewSettingKey] = useState('');
+  const [newSettingValue, setNewSettingValue] = useState('');
+  const [newSettingDesc, setNewSettingDesc] = useState('');
+  const [editingSettingKey, setEditingSettingKey] = useState<string | null>(null);
+  const [editSettingValue, setEditSettingValue] = useState('');
+  const [editSettingDesc, setEditSettingDesc] = useState('');
+
+  // Logs data
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logStats, setLogStats] = useState<LogStats | null>(null);
+  const [logFilter, setLogFilter] = useState<'all' | 'scheduled' | 'autoreply'>('all');
+  const [logsPage, setLogsPage] = useState(1);
 
   // Check admin access
   useEffect(() => {
@@ -110,6 +150,83 @@ export default function AdminPanel() {
       fetchUsers();
     }
   }, [activeTab, usersPage, userSearch, userRoleFilter, currentUserRole]);
+
+  // Settings fetch
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      const data = await res.json();
+      if (res.ok) {
+        setSettings(data.settings || []);
+      }
+    } catch {
+      console.error('Failed to fetch settings');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'settings' && currentUserRole) {
+      fetchSettings();
+    }
+  }, [activeTab, currentUserRole, fetchSettings]);
+
+  const saveSetting = async (key: string, value: string, description?: string) => {
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value, description }),
+      });
+      if (res.ok) {
+        await fetchSettings();
+        setEditingSettingKey(null);
+        setNewSettingKey('');
+        setNewSettingValue('');
+        setNewSettingDesc('');
+      } else {
+        const data = await res.json();
+        alert(data.error || '保存に失敗しました');
+      }
+    } catch {
+      alert('エラーが発生しました');
+    }
+  };
+
+  const deleteSetting = async (key: string) => {
+    try {
+      const res = await fetch(`/api/admin/settings?key=${encodeURIComponent(key)}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchSettings();
+      }
+    } catch {
+      alert('削除に失敗しました');
+    }
+  };
+
+  // Logs fetch
+  const fetchLogs = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        type: logFilter,
+        page: logsPage.toString(),
+        limit: '50',
+      });
+      const res = await fetch(`/api/admin/logs?${params}`);
+      const data = await res.json();
+      if (res.ok) {
+        setLogs(data.logs || []);
+        setLogStats(data.stats || null);
+      }
+    } catch {
+      console.error('Failed to fetch logs');
+    }
+  }, [logFilter, logsPage]);
+
+  useEffect(() => {
+    if (activeTab === 'logs' && currentUserRole) {
+      fetchLogs();
+    }
+  }, [activeTab, currentUserRole, logFilter, logsPage, fetchLogs]);
 
   const updateUserRole = async (userId: string, newRole: Role) => {
     try {
@@ -394,17 +511,273 @@ export default function AdminPanel() {
 
                 {/* Settings Tab */}
                 {activeTab === 'settings' && (
-                  <div className="bg-white rounded-xl border border-slate-200 p-5">
-                    <h3 className="font-semibold text-slate-900 mb-4">システム設定</h3>
-                    <p className="text-slate-500">システム設定の機能は開発中です。</p>
+                  <div className="space-y-6">
+                    {/* 既存の設定一覧 */}
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-slate-200">
+                        <h3 className="font-semibold text-slate-900">システム設定</h3>
+                        <p className="text-sm text-slate-500 mt-1">アプリケーション全体の設定を管理します</p>
+                      </div>
+
+                      {settings.length > 0 ? (
+                        <div className="divide-y divide-slate-200">
+                          {settings.map(setting => (
+                            <div key={setting.id} className="px-5 py-4">
+                              {editingSettingKey === setting.key ? (
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">キー</label>
+                                    <p className="text-sm font-mono text-slate-700">{setting.key}</p>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">値</label>
+                                    <input
+                                      type="text"
+                                      value={editSettingValue}
+                                      onChange={(e) => setEditSettingValue(e.target.value)}
+                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-slate-500 mb-1">説明</label>
+                                    <input
+                                      type="text"
+                                      value={editSettingDesc}
+                                      onChange={(e) => setEditSettingDesc(e.target.value)}
+                                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => saveSetting(setting.key, editSettingValue, editSettingDesc)}
+                                      className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                    >
+                                      保存
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingSettingKey(null)}
+                                      className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
+                                    >
+                                      キャンセル
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <p className="font-mono text-sm font-medium text-slate-900">{setting.key}</p>
+                                    <p className="text-sm text-slate-700 mt-1">{setting.value}</p>
+                                    {setting.description && (
+                                      <p className="text-xs text-slate-500 mt-1">{setting.description}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        setEditingSettingKey(setting.key);
+                                        setEditSettingValue(setting.value);
+                                        setEditSettingDesc(setting.description || '');
+                                      }}
+                                      className="px-3 py-1 text-xs text-indigo-600 hover:bg-indigo-50 rounded"
+                                    >
+                                      編集
+                                    </button>
+                                    <button
+                                      onClick={() => deleteSetting(setting.key)}
+                                      className="px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded"
+                                    >
+                                      削除
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-5 py-8 text-center text-slate-500">
+                          <p>設定項目がありません</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 新規設定追加 */}
+                    <div className="bg-white rounded-xl border border-slate-200 p-5">
+                      <h4 className="font-medium text-slate-900 mb-4">設定を追加</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">キー</label>
+                          <input
+                            type="text"
+                            value={newSettingKey}
+                            onChange={(e) => setNewSettingKey(e.target.value)}
+                            placeholder="setting_key"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">値</label>
+                          <input
+                            type="text"
+                            value={newSettingValue}
+                            onChange={(e) => setNewSettingValue(e.target.value)}
+                            placeholder="値を入力"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">説明（任意）</label>
+                          <input
+                            type="text"
+                            value={newSettingDesc}
+                            onChange={(e) => setNewSettingDesc(e.target.value)}
+                            placeholder="この設定の説明"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (newSettingKey && newSettingValue) {
+                            saveSetting(newSettingKey, newSettingValue, newSettingDesc || undefined);
+                          }
+                        }}
+                        disabled={!newSettingKey || !newSettingValue}
+                        className="mt-3 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        追加
+                      </button>
+                    </div>
+
+                    {/* デフォルト設定ガイド */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-5">
+                      <h4 className="font-medium text-slate-700 mb-3">設定キーの例</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        {[
+                          { key: 'maintenance_mode', desc: 'メンテナンスモード (true/false)' },
+                          { key: 'max_upload_size_mb', desc: 'アップロード上限 (MB)' },
+                          { key: 'cron_interval_minutes', desc: 'Cronジョブの実行間隔 (分)' },
+                          { key: 'auto_reply_enabled', desc: '自動リプライの有効/無効' },
+                          { key: 'registration_enabled', desc: '新規登録の有効/無効' },
+                          { key: 'announcement', desc: 'システムお知らせメッセージ' },
+                        ].map(item => (
+                          <div key={item.key} className="flex gap-2">
+                            <code className="text-xs bg-slate-200 px-1.5 py-0.5 rounded font-mono">{item.key}</code>
+                            <span className="text-slate-500">{item.desc}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 {/* Logs Tab */}
                 {activeTab === 'logs' && (
-                  <div className="bg-white rounded-xl border border-slate-200 p-5">
-                    <h3 className="font-semibold text-slate-900 mb-4">操作ログ</h3>
-                    <p className="text-slate-500">操作ログの機能は開発中です。</p>
+                  <div className="space-y-6">
+                    {/* ログ集計カード */}
+                    {logStats && (
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[
+                          { label: '予約投稿（実行済み）', value: logStats.totalScheduled, color: 'text-blue-600' },
+                          { label: '自動リプライ', value: logStats.totalAutoReply, color: 'text-green-600' },
+                          { label: '予約投稿（失敗）', value: logStats.failedScheduled, color: 'text-red-600' },
+                          { label: '自動リプライ（失敗）', value: logStats.failedAutoReply, color: 'text-red-600' },
+                        ].map(stat => (
+                          <div key={stat.label} className="bg-white rounded-xl border border-slate-200 p-4">
+                            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                            <p className="text-xs text-slate-500 mt-1">{stat.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* フィルター */}
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                        <h3 className="font-semibold text-slate-900">操作ログ</h3>
+                        <div className="flex gap-2">
+                          {[
+                            { value: 'all' as const, label: '全て' },
+                            { value: 'scheduled' as const, label: '予約投稿' },
+                            { value: 'autoreply' as const, label: '自動リプライ' },
+                          ].map(filter => (
+                            <button
+                              key={filter.value}
+                              onClick={() => { setLogFilter(filter.value); setLogsPage(1); }}
+                              className={`px-3 py-1 text-xs rounded-full ${
+                                logFilter === filter.value
+                                  ? 'bg-indigo-100 text-indigo-700'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {filter.label}
+                            </button>
+                          ))}
+                          <button
+                            onClick={fetchLogs}
+                            className="px-3 py-1 text-xs bg-slate-100 text-slate-600 rounded-full hover:bg-slate-200"
+                          >
+                            更新
+                          </button>
+                        </div>
+                      </div>
+
+                      {logs.length > 0 ? (
+                        <div className="divide-y divide-slate-100">
+                          {logs.map(log => (
+                            <div key={log.id} className="px-5 py-3 flex items-center gap-4 hover:bg-slate-50">
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                log.status === 'completed' || log.status === 'sent' ? 'bg-green-500' :
+                                log.status === 'failed' ? 'bg-red-500' :
+                                'bg-yellow-500'
+                              }`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                    log.type === 'scheduled' ? 'bg-blue-50 text-blue-700' : 'bg-green-50 text-green-700'
+                                  }`}>
+                                    {log.type === 'scheduled' ? '予約投稿' : '自動リプライ'}
+                                  </span>
+                                  <span className="text-sm font-medium text-slate-900 truncate">{log.action}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-0.5 truncate">{log.detail}</p>
+                              </div>
+                              {log.username && (
+                                <span className="text-xs text-slate-400 flex-shrink-0">@{log.username}</span>
+                              )}
+                              <span className="text-xs text-slate-400 flex-shrink-0 w-32 text-right">
+                                {new Date(log.createdAt).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-5 py-8 text-center text-slate-500">
+                          <p>ログがありません</p>
+                        </div>
+                      )}
+
+                      {/* ページング */}
+                      {logs.length > 0 && (
+                        <div className="px-5 py-3 border-t border-slate-200 flex items-center justify-between">
+                          <button
+                            onClick={() => setLogsPage(p => Math.max(1, p - 1))}
+                            disabled={logsPage <= 1}
+                            className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800 disabled:opacity-50"
+                          >
+                            前のページ
+                          </button>
+                          <span className="text-sm text-slate-500">ページ {logsPage}</span>
+                          <button
+                            onClick={() => setLogsPage(p => p + 1)}
+                            disabled={logs.length < 50}
+                            className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800 disabled:opacity-50"
+                          >
+                            次のページ
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </>
@@ -433,6 +806,7 @@ function RolePermissionEditor({
         { key: 'scheduledPosts', label: '予約投稿', type: 'boolean' },
         { key: 'maxScheduledPosts', label: '最大予約投稿数', type: 'number', unit: '件' },
         { key: 'recurringPosts', label: '繰り返し投稿', type: 'boolean' },
+        { key: 'autoReply', label: '自動リプライ', type: 'boolean' },
       ],
     },
     {

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       client.getMe(),
       fetchAll ? client.getAllMyThreads(500) : client.getMyThreads(Math.min(limit, 100)),
       client.getMyInsights().catch(() => null),
-      client.getFollowersCount(),
+      client.getFollowersCount().catch(() => 0),
       client.getMyReplies(50).catch(() => ({ data: [] })),
     ]);
 

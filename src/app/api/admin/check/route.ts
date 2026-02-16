@@ -14,11 +14,7 @@ export async function GET() {
 
     // データベースからユーザーのロールを取得
     if (!isDatabaseAvailable() || !prisma) {
-      // DBが利用不可の場合、デフォルトでADMINとして扱う（開発用）
-      return NextResponse.json({
-        isAdmin: true,
-        role: 'ADMIN' as Role,
-      });
+      return NextResponse.json({ isAdmin: false, error: 'Database not available' }, { status: 503 });
     }
 
     const user = await prisma.user.findUnique({

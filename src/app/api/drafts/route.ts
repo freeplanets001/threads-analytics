@@ -43,6 +43,18 @@ export async function POST(request: NextRequest) {
   try {
     const { accountId, type, text, mediaUrls, threadPosts } = await request.json();
 
+    if (!accountId) {
+      return NextResponse.json({ error: 'Account ID is required' }, { status: 400 });
+    }
+
+    // accountIdの所有者確認
+    const account = await prisma.threadsAccount.findFirst({
+      where: { id: accountId, userId: session.user.id },
+    });
+    if (!account) {
+      return NextResponse.json({ error: 'アカウントが見つかりません' }, { status: 404 });
+    }
+
     // プランに基づく制限チェック
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
