@@ -139,6 +139,30 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
     saveTemplates(templates.filter(t => t.id !== id));
   };
 
+  // テンプレート変数を置換
+  const replaceVariables = (text: string): string => {
+    const now = new Date();
+    const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+    const replacements: Record<string, string> = {
+      '日付': `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
+      'date': `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`,
+      '時刻': `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+      'time': `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+      '曜日': `${dayNames[now.getDay()]}曜日`,
+      'day': `${dayNames[now.getDay()]}曜日`,
+      '年': `${now.getFullYear()}`,
+      'year': `${now.getFullYear()}`,
+      '月': `${now.getMonth() + 1}`,
+      'month': `${now.getMonth() + 1}`,
+      '日': `${now.getDate()}`,
+    };
+    let result = text;
+    for (const [key, value] of Object.entries(replacements)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    }
+    return result;
+  };
+
   // 使用
   const handleUse = (template: Template) => {
     // 使用回数を増やす
@@ -147,7 +171,12 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
     ));
 
     if (onSelectTemplate) {
-      onSelectTemplate(template);
+      // 変数を置換してからコールバック
+      const resolvedTemplate = {
+        ...template,
+        text: template.text ? replaceVariables(template.text) : template.text,
+      };
+      onSelectTemplate(resolvedTemplate);
     }
   };
 
@@ -275,7 +304,6 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
             <div>
               <label className="block text-sm text-slate-600 mb-1">
                 テンプレート内容 *
-                <span className="text-slate-400 ml-2">（{'{{変数名}}'} で置換箇所を指定）</span>
               </label>
               <textarea
                 value={templateText}
@@ -283,6 +311,25 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
                 placeholder="投稿テンプレートを入力..."
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none font-mono text-sm"
               />
+              <div className="mt-2 flex flex-wrap gap-1">
+                <span className="text-xs text-slate-400 mr-1">自動変数:</span>
+                {[
+                  { tag: '{{日付}}', label: '日付' },
+                  { tag: '{{時刻}}', label: '時刻' },
+                  { tag: '{{曜日}}', label: '曜日' },
+                  { tag: '{{年}}', label: '年' },
+                  { tag: '{{月}}', label: '月' },
+                ].map(v => (
+                  <button
+                    key={v.tag}
+                    type="button"
+                    onClick={() => setTemplateText(prev => prev + v.tag)}
+                    className="px-2 py-0.5 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100"
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex justify-end gap-2">
               <button

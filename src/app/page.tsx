@@ -16,6 +16,8 @@ import { ReportGenerator } from '@/components/ReportGenerator';
 import { RecurringPostManager } from '@/components/RecurringPostManager';
 import { PostCalendar } from '@/components/PostCalendar';
 import { AutoReplyManager } from '@/components/AutoReplyManager';
+import { PostQueueManager } from '@/components/PostQueueManager';
+import { ABTestManager } from '@/components/ABTestManager';
 import { useTheme } from '@/contexts/ThemeContext';
 import Link from 'next/link';
 import { Role, hasPermission, getRoleName, getPermissions } from '@/lib/permissions';
@@ -39,7 +41,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import type { AnalyticsResult, HashtagAnalysis, KeywordAnalysis, HeatmapData, AIInsight, DailyTrend } from '@/lib/analytics/calculations';
 
-type TabType = 'overview' | 'compose' | 'bulk' | 'schedule' | 'recurring' | 'autoreply' | 'drafts' | 'templates' | 'calendar' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'reports' | 'export';
+type TabType = 'overview' | 'compose' | 'bulk' | 'schedule' | 'recurring' | 'autoreply' | 'drafts' | 'templates' | 'queue' | 'abtest' | 'calendar' | 'posts' | 'timing' | 'content' | 'keywords' | 'engagement' | 'insights' | 'reports' | 'export';
 
 interface ThreadWithInsights {
   id: string;
@@ -260,6 +262,8 @@ export default function AnalyticsDashboard() {
     { id: 'autoreply', label: '自動リプライ', permission: 'autoReply' },
     { id: 'drafts', label: '下書き', permission: 'drafts' },
     { id: 'templates', label: 'テンプレート', permission: 'templates' },
+    { id: 'queue', label: 'キュー', permission: 'scheduledPosts' },
+    { id: 'abtest', label: 'A/Bテスト', permission: 'scheduledPosts' },
     { id: 'calendar', label: 'カレンダー' },
     { id: 'posts', label: '投稿一覧' },
     { id: 'timing', label: '投稿時間' },
@@ -535,7 +539,7 @@ export default function AnalyticsDashboard() {
           <div className="mt-4 space-y-2">
             {/* 1行目: メイン機能 */}
             <div className="flex flex-wrap gap-1">
-              {tabs.filter(t => ['overview', 'compose', 'bulk', 'schedule', 'recurring', 'autoreply', 'drafts', 'templates'].includes(t.id)).map((tab) => (
+              {tabs.filter(t => ['overview', 'compose', 'bulk', 'schedule', 'recurring', 'autoreply', 'drafts', 'templates', 'queue', 'abtest'].includes(t.id)).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -611,6 +615,11 @@ export default function AnalyticsDashboard() {
                   onPostSuccess={fetchData}
                   initialText={initialComposeText}
                   onInitialTextUsed={() => setInitialComposeText('')}
+                  suggestedHashtags={data.advancedAnalysis?.hashtags?.map(h => ({
+                    tag: h.tag,
+                    count: h.count,
+                    avgEngagement: h.avgEngagement,
+                  }))}
                 />
               </div>
             )}
@@ -733,6 +742,24 @@ export default function AnalyticsDashboard() {
               <AutoReplyManager
                 accessToken={currentAccount.accessToken}
                 accountId={currentAccount.id}
+                onRefresh={fetchData}
+              />
+            )}
+
+            {/* Queue Tab */}
+            {activeTab === 'queue' && currentAccount && (
+              <PostQueueManager
+                accountId={currentAccount.id}
+                bestPostingHours={analytics.bestPostingHours}
+                onRefresh={fetchData}
+              />
+            )}
+
+            {/* A/B Test Tab */}
+            {activeTab === 'abtest' && currentAccount && (
+              <ABTestManager
+                accountId={currentAccount.id}
+                accessToken={currentAccount.accessToken}
                 onRefresh={fetchData}
               />
             )}

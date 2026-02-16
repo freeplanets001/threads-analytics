@@ -5,6 +5,43 @@ import { ThreadsAPIClient } from '@/lib/threads/client';
 // Vercel Cron認証
 const CRON_SECRET = process.env.CRON_SECRET;
 
+// Webhook通知を送信
+async function sendWebhookNotification(payload: {
+  type: 'post_success' | 'post_failed';
+  postId: string;
+  postType: string;
+  username?: string;
+  text?: string;
+  error?: string;
+}) {
+  try {
+    if (!isDatabaseAvailable() || !prisma) return;
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: 'webhook_url' },
+    });
+    if (!setting?.value) return;
+
+    const webhookUrl = setting.value;
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: payload.type,
+        timestamp: new Date().toISOString(),
+        data: {
+          postId: payload.postId,
+          postType: payload.postType,
+          username: payload.username,
+          text: payload.text?.substring(0, 200),
+          error: payload.error,
+        },
+      }),
+    });
+  } catch (e) {
+    console.error('Webhook notification failed:', e);
+  }
+}
+
 // 予約投稿・定期投稿を処理するCronジョブ
 export async function GET(request: NextRequest) {
   try {
@@ -41,6 +78,15 @@ export async function GET(request: NextRequest) {
     for (const post of scheduledPosts) {
       const result = await processPost(post);
       results.push({ id: post.id, type: 'scheduled', ...result });
+      // Webhook通知
+      await sendWebhookNotification({
+        type: result.status === 'completed' ? 'post_success' : 'post_failed',
+        postId: post.id,
+        postType: post.type,
+        username: post.account.username || undefined,
+        text: post.text || undefined,
+        error: result.error,
+      });
     }
 
     // 2. 定期投稿を処理
@@ -68,6 +114,15 @@ export async function GET(request: NextRequest) {
 
       const result = await processPost(post);
       results.push({ id: post.id, type: 'recurring', ...result });
+      // Webhook通知
+      await sendWebhookNotification({
+        type: result.status === 'completed' ? 'post_success' : 'post_failed',
+        postId: post.id,
+        postType: post.type,
+        username: post.account.username || undefined,
+        text: post.text || undefined,
+        error: result.error,
+      });
 
       // 成功した場合、次回のスケジュールを設定
       if (result.status === 'completed') {

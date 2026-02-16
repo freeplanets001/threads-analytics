@@ -6,12 +6,19 @@ import { ImageUpload } from './ImageUpload';
 import { MediaUpload } from './MediaUpload';
 import { ImageGenerator } from './ImageGenerator';
 
+interface HashtagSuggestion {
+  tag: string;
+  count: number;
+  avgEngagement: number;
+}
+
 interface PostComposerProps {
   accessToken: string;
   accountId?: string;
   onPostSuccess?: () => void;
   initialText?: string;
   onInitialTextUsed?: () => void;
+  suggestedHashtags?: HashtagSuggestion[];
 }
 
 type PostType = 'text' | 'image' | 'video' | 'carousel' | 'thread';
@@ -22,7 +29,7 @@ interface ThreadPost {
   videoUrl?: string;
 }
 
-export function PostComposer({ accessToken, accountId, onPostSuccess, initialText, onInitialTextUsed }: PostComposerProps) {
+export function PostComposer({ accessToken, accountId, onPostSuccess, initialText, onInitialTextUsed, suggestedHashtags }: PostComposerProps) {
   const [postType, setPostType] = useState<PostType>('text');
   const [text, setText] = useState(initialText || '');
   const [imageUrl, setImageUrl] = useState('');
@@ -410,6 +417,35 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
             placeholder="何を投稿しますか？"
             className={`w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 ${heightMap[textareaHeight]} resize-y transition-all`}
           />
+
+          {/* Hashtag Suggestions */}
+          {suggestedHashtags && suggestedHashtags.length > 0 && (
+            <div className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+              <p className="text-xs font-medium text-slate-500 mb-2">人気ハッシュタグ（クリックで挿入）</p>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestedHashtags.slice(0, 10).map(h => (
+                  <button
+                    key={h.tag}
+                    type="button"
+                    onClick={() => {
+                      const hashtag = h.tag.startsWith('#') ? h.tag : `#${h.tag}`;
+                      if (!text.includes(hashtag)) {
+                        setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + hashtag);
+                      }
+                    }}
+                    className={`px-2 py-1 text-xs rounded-full transition-colors ${
+                      text.includes(h.tag.startsWith('#') ? h.tag : `#${h.tag}`)
+                        ? 'bg-violet-200 text-violet-700'
+                        : 'bg-violet-50 text-violet-600 hover:bg-violet-100'
+                    }`}
+                    title={`使用${h.count}回 / 平均エンゲージメント${h.avgEngagement.toFixed(0)}`}
+                  >
+                    {h.tag.startsWith('#') ? h.tag : `#${h.tag}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* AI Buttons */}
           <div className="flex gap-2 mt-2">
