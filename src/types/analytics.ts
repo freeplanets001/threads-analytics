@@ -1,4 +1,4 @@
-// Threads Studio - Analytics Types
+// Threads Studio Lab - Analytics Types
 
 export interface ThreadsMetrics {
   impressions: number;

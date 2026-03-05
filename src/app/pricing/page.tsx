@@ -117,7 +117,7 @@ function PricingContent() {
       <header className="bg-white/80 backdrop-blur-sm border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="text-xl font-bold text-slate-900">
-            Threads Studio
+            Threads Studio Lab
           </Link>
           <div className="flex items-center gap-4">
             {session ? (

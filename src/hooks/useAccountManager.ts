@@ -47,14 +47,63 @@ export function useAccountManager() {
   const [currentAccountId, setCurrentAccountId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load accounts from localStorage and sync to database
+  // Load accounts from DB first, fallback to localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const loadAndSync = async () => {
-      const savedAccounts = localStorage.getItem(STORAGE_KEY);
       const savedCurrentId = localStorage.getItem(CURRENT_ACCOUNT_KEY);
+      if (savedCurrentId) {
+        setCurrentAccountId(savedCurrentId);
+      }
 
+      // まずDBからアカウントを取得
+      try {
+        const res = await fetch('/api/accounts');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.accounts && data.accounts.length > 0) {
+            const dbAccounts: Account[] = data.accounts.map((a: {
+              threadsUserId: string;
+              username: string;
+              name?: string;
+              profilePicture?: string;
+              accessToken: string;
+              appId?: string;
+              appSecret?: string;
+              tokenExpiresAt?: string;
+              createdAt: string;
+            }) => ({
+              id: a.threadsUserId,
+              username: a.username,
+              name: a.name,
+              profilePicture: a.profilePicture,
+              accessToken: a.accessToken,
+              appId: a.appId || undefined,
+              appSecret: a.appSecret || undefined,
+              tokenExpiresAt: a.tokenExpiresAt || undefined,
+              addedAt: a.createdAt,
+            }));
+
+            // localStorageにも反映
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dbAccounts));
+            setAccounts(dbAccounts);
+
+            if (!savedCurrentId && dbAccounts.length > 0) {
+              setCurrentAccountId(dbAccounts[0].id);
+              localStorage.setItem(CURRENT_ACCOUNT_KEY, dbAccounts[0].id);
+            }
+
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {
+        console.log('Failed to load accounts from DB, falling back to localStorage');
+      }
+
+      // DB取得失敗時はlocalStorageからフォールバック
+      const savedAccounts = localStorage.getItem(STORAGE_KEY);
       let localAccounts: Account[] = [];
       if (savedAccounts) {
         try {
@@ -63,10 +112,6 @@ export function useAccountManager() {
         } catch {
           setAccounts([]);
         }
-      }
-
-      if (savedCurrentId) {
-        setCurrentAccountId(savedCurrentId);
       }
 
       // localStorageのアカウントをデータベースに同期
@@ -82,6 +127,9 @@ export function useAccountManager() {
                 name: account.name,
                 profilePicture: account.profilePicture,
                 accessToken: account.accessToken,
+                appId: account.appId,
+                appSecret: account.appSecret,
+                tokenExpiresAt: account.tokenExpiresAt,
               }),
             });
           } catch (err) {
@@ -144,7 +192,7 @@ export function useAccountManager() {
         tokenExpiresAt: options?.tokenExpiresAt ?? existingAccount?.tokenExpiresAt,
       };
 
-      // データベースにも保存
+      // データベースにも保存（appId, appSecret, tokenExpiresAt含む）
       try {
         await fetch('/api/accounts', {
           method: 'POST',
@@ -155,6 +203,9 @@ export function useAccountManager() {
             name: data.user.name,
             profilePicture: data.user.threads_profile_picture_url,
             accessToken,
+            appId: newAccount.appId,
+            appSecret: newAccount.appSecret,
+            tokenExpiresAt: newAccount.tokenExpiresAt,
           }),
         });
       } catch (dbErr) {
@@ -203,6 +254,22 @@ export function useAccountManager() {
     const newAccounts = [...accounts];
     newAccounts[existingIndex] = updatedAccount;
     saveAccounts(newAccounts);
+
+    // DBにも同期
+    fetch('/api/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        threadsUserId: accountId,
+        username: updatedAccount.username,
+        name: updatedAccount.name,
+        profilePicture: updatedAccount.profilePicture,
+        accessToken: updatedAccount.accessToken,
+        appId: updatedAccount.appId,
+        appSecret: updatedAccount.appSecret,
+        tokenExpiresAt: updatedAccount.tokenExpiresAt,
+      }),
+    }).catch(() => console.log('Failed to sync update to database'));
 
     return true;
   }, [accounts, saveAccounts]);

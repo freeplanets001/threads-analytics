@@ -151,7 +151,7 @@ ${topPosts[0] ? `- 最もパフォーマンスの良かった投稿のスタイ�
 
 ---
 
-*このレポートはThreads Studioで自動生成されました*
+*このレポートはThreads Studio Labで自動生成されました*
 `.trim();
 
     // Markdownとしてダウンロード
@@ -262,7 +262,7 @@ ${topPosts[0] ? `- 最もパフォーマンスの良かった投稿のスタイ�
   </table>
 
   <p style="margin-top: 40px; font-size: 12px; color: #94a3b8; text-align: center;">
-    このレポートはThreads Studioで自動生成されました
+    このレポートはThreads Studio Labで自動生成されました
   </p>
 </body>
 </html>

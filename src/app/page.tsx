@@ -144,6 +144,55 @@ export default function AnalyticsDashboard() {
   // 通知センター
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // ダッシュボードウィジェットカスタマイズ
+  type WidgetId = 'kpi' | 'metrics' | 'charts' | 'topPosts';
+  interface WidgetConfig {
+    id: WidgetId;
+    label: string;
+    visible: boolean;
+  }
+  const defaultWidgets: WidgetConfig[] = [
+    { id: 'kpi', label: 'KPIカード', visible: true },
+    { id: 'metrics', label: 'メトリクス', visible: true },
+    { id: 'charts', label: 'チャート', visible: true },
+    { id: 'topPosts', label: 'トップ投稿', visible: true },
+  ];
+  const [widgets, setWidgets] = useState<WidgetConfig[]>(defaultWidgets);
+  const [showWidgetSettings, setShowWidgetSettings] = useState(false);
+
+  // ウィジェット設定の読み込み
+  useEffect(() => {
+    const saved = localStorage.getItem('dashboard_widgets');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setWidgets(parsed);
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const updateWidgets = (newWidgets: WidgetConfig[]) => {
+    setWidgets(newWidgets);
+    localStorage.setItem('dashboard_widgets', JSON.stringify(newWidgets));
+  };
+
+  const toggleWidget = (id: WidgetId) => {
+    const newWidgets = widgets.map(w =>
+      w.id === id ? { ...w, visible: !w.visible } : w
+    );
+    updateWidgets(newWidgets);
+  };
+
+  const moveWidget = (index: number, direction: 'up' | 'down') => {
+    const newWidgets = [...widgets];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newWidgets.length) return;
+    [newWidgets[index], newWidgets[targetIndex]] = [newWidgets[targetIndex], newWidgets[index]];
+    updateWidgets(newWidgets);
+  };
+
+  const isWidgetVisible = (id: WidgetId) => widgets.find(w => w.id === id)?.visible ?? true;
+
 
   const fetchData = useCallback(async () => {
     if (!currentAccount) return;
@@ -302,7 +351,7 @@ export default function AnalyticsDashboard() {
       <div className="min-h-screen bg-gradient-to-br from-violet-50 to-cyan-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
           <h1 className="text-2xl font-bold text-slate-900 mb-2">
-            Threads Studio
+            Threads Studio Lab
           </h1>
           <p className="text-slate-500 mb-6">分析・投稿スタジオ</p>
 
@@ -347,7 +396,7 @@ export default function AnalyticsDashboard() {
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-slate-900 mb-2">
-              Threads Studio
+              Threads Studio Lab
             </h1>
             <p className="text-slate-500">分析・投稿スタジオ</p>
           </div>
@@ -407,7 +456,7 @@ export default function AnalyticsDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900">
-                Threads Studio
+                Threads Studio Lab
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 分析・投稿スタジオ
@@ -627,54 +676,165 @@ export default function AnalyticsDashboard() {
             {/* Overview Tab */}
             {activeTab === 'overview' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                  <KPICard title="フォロワー" value={stats.followersCount} />
-                  <KPICard title="総閲覧数" value={stats.totalViews} />
-                  <KPICard title="総いいね" value={stats.totalLikes} />
-                  <KPICard title="総リプライ" value={stats.totalReplies} />
-                  <KPICard title="総リポスト" value={stats.totalReposts} />
-                  <KPICard title="総シェア" value={stats.totalShares} />
+                {/* ウィジェット設定ボタン */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowWidgetSettings(!showWidgetSettings)}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      showWidgetSettings ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                      </svg>
+                      ウィジェット設定
+                    </span>
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white rounded-xl border border-slate-200 p-5">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-2">エンゲージメント率</h3>
-                    <p className="text-4xl font-bold text-violet-600">
-                      {analytics.averageEngagementRate.toFixed(2)}%
-                    </p>
+                {/* ウィジェット設定パネル */}
+                {showWidgetSettings && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-4">
+                    <h4 className="text-sm font-semibold text-slate-700 mb-3">表示するウィジェット</h4>
+                    <div className="space-y-2">
+                      {widgets.map((widget, index) => (
+                        <div key={widget.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={widget.visible}
+                              onChange={() => toggleWidget(widget.id)}
+                              className="w-4 h-4 text-violet-600 rounded"
+                            />
+                            <span className="text-sm text-slate-700">{widget.label}</span>
+                          </label>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => moveWidget(index, 'up')}
+                              disabled={index === 0}
+                              className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                            </button>
+                            <button
+                              onClick={() => moveWidget(index, 'down')}
+                              disabled={index === widgets.length - 1}
+                              className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => updateWidgets(defaultWidgets)}
+                      className="mt-3 text-xs text-slate-500 hover:text-slate-700"
+                    >
+                      デフォルトに戻す
+                    </button>
                   </div>
-                  <div className="bg-white rounded-xl border border-slate-200 p-5">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-2">バイラル係数</h3>
-                    <p className="text-4xl font-bold text-cyan-600">
-                      {analytics.viralMetrics.viralCoefficient.toFixed(3)}%
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-xl border border-slate-200 p-5">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-2">成長トレンド</h3>
-                    <p className={`text-4xl font-bold ${
-                      analytics.growthMetrics.engagementTrend === 'up' ? 'text-emerald-600' :
-                      analytics.growthMetrics.engagementTrend === 'down' ? 'text-red-600' : 'text-slate-600'
-                    }`}>
-                      {analytics.growthMetrics.engagementTrend === 'up' ? '↑ 上昇' :
-                       analytics.growthMetrics.engagementTrend === 'down' ? '↓ 下降' : '→ 安定'}
-                    </p>
-                  </div>
-                </div>
+                )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <EngagementPieChart
-                    likes={stats.totalLikes}
-                    replies={stats.totalReplies}
-                    reposts={stats.totalReposts}
-                    quotes={stats.totalQuotes}
-                    shares={stats.totalShares}
-                  />
-                  <ViralMetricsCard
-                    viralCoefficient={analytics.viralMetrics.viralCoefficient}
-                    shareRate={analytics.viralMetrics.shareRate}
-                    replyRate={analytics.viralMetrics.replyRate}
-                  />
-                </div>
+                {/* ウィジェットを設定順で表示 */}
+                {widgets.filter(w => w.visible).map(widget => {
+                  if (widget.id === 'kpi') return (
+                    <div key="kpi" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      <KPICard title="フォロワー" value={stats.followersCount} />
+                      <KPICard title="総閲覧数" value={stats.totalViews} />
+                      <KPICard title="総いいね" value={stats.totalLikes} />
+                      <KPICard title="総リプライ" value={stats.totalReplies} />
+                      <KPICard title="総リポスト" value={stats.totalReposts} />
+                      <KPICard title="総シェア" value={stats.totalShares} />
+                    </div>
+                  );
+                  if (widget.id === 'metrics') return (
+                    <div key="metrics" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-2">エンゲージメント率</h3>
+                        <p className="text-4xl font-bold text-violet-600">
+                          {analytics.averageEngagementRate.toFixed(2)}%
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-2">バイラル係数</h3>
+                        <p className="text-4xl font-bold text-cyan-600">
+                          {analytics.viralMetrics.viralCoefficient.toFixed(3)}%
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-2">成長トレンド</h3>
+                        <p className={`text-4xl font-bold ${
+                          analytics.growthMetrics.engagementTrend === 'up' ? 'text-emerald-600' :
+                          analytics.growthMetrics.engagementTrend === 'down' ? 'text-red-600' : 'text-slate-600'
+                        }`}>
+                          {analytics.growthMetrics.engagementTrend === 'up' ? '↑ 上昇' :
+                           analytics.growthMetrics.engagementTrend === 'down' ? '↓ 下降' : '→ 安定'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                  if (widget.id === 'charts') return (
+                    <div key="charts" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <EngagementPieChart
+                        likes={stats.totalLikes}
+                        replies={stats.totalReplies}
+                        reposts={stats.totalReposts}
+                        quotes={stats.totalQuotes}
+                        shares={stats.totalShares}
+                      />
+                      <ViralMetricsCard
+                        viralCoefficient={analytics.viralMetrics.viralCoefficient}
+                        shareRate={analytics.viralMetrics.shareRate}
+                        replyRate={analytics.viralMetrics.replyRate}
+                      />
+                    </div>
+                  );
+                  if (widget.id === 'topPosts') return (
+                    <div key="topPosts" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-4">トップ投稿</h3>
+                        <div className="space-y-3">
+                          {analytics.topPosts.slice(0, 3).map((post, i) => (
+                            <div key={post.id} className="p-3 bg-slate-50 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <span className="text-lg font-bold text-violet-600">#{i + 1}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-slate-700 line-clamp-2">{post.text}</p>
+                                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                                    <span>閲覧 {post.insights.views}</span>
+                                    <span>いいね {post.insights.likes}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-xl border border-slate-200 p-5">
+                        <h3 className="text-sm font-semibold text-slate-700 mb-4">改善が必要な投稿</h3>
+                        <div className="space-y-3">
+                          {analytics.worstPosts.slice(0, 3).map((post, i) => (
+                            <div key={post.id} className="p-3 bg-red-50 rounded-lg">
+                              <div className="flex items-start gap-2">
+                                <span className="text-lg font-bold text-red-400">#{i + 1}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-slate-700 line-clamp-2">{post.text}</p>
+                                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                                    <span>閲覧 {post.insights.views}</span>
+                                    <span>いいね {post.insights.likes}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                  return null;
+                })}
               </div>
             )}
 
@@ -997,7 +1157,7 @@ export default function AnalyticsDashboard() {
       <footer className="border-t border-slate-200 bg-white mt-8">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between text-sm text-slate-500">
           <span>最終更新: {new Date().toLocaleString('ja-JP')}</span>
-          <span>Threads Studio</span>
+          <span>Threads Studio Lab</span>
         </div>
       </footer>
     </div>

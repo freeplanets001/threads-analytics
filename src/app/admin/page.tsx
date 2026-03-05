@@ -61,6 +61,9 @@ export default function AdminPanel() {
   // Users data
   const [users, setUsers] = useState<User[]>([]);
   const [usersPage, setUsersPage] = useState(1);
+  const [usersTotalCount, setUsersTotalCount] = useState(0);
+  const [usersTotalPages, setUsersTotalPages] = useState(0);
+  const [usersPerPage] = useState(20);
   const [userSearch, setUserSearch] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<Role | 'all'>('all');
 
@@ -82,6 +85,7 @@ export default function AdminPanel() {
   const [logStats, setLogStats] = useState<LogStats | null>(null);
   const [logFilter, setLogFilter] = useState<'all' | 'scheduled' | 'autoreply'>('all');
   const [logsPage, setLogsPage] = useState(1);
+  const [logsTotalCount, setLogsTotalCount] = useState(0);
 
   // Check admin access
   useEffect(() => {
@@ -128,6 +132,7 @@ export default function AdminPanel() {
     try {
       const params = new URLSearchParams({
         page: usersPage.toString(),
+        perPage: usersPerPage.toString(),
         search: userSearch,
         role: userRoleFilter,
       });
@@ -137,6 +142,8 @@ export default function AdminPanel() {
 
       if (res.ok) {
         setUsers(data.users);
+        setUsersTotalCount(data.totalCount || 0);
+        setUsersTotalPages(data.totalPages || 1);
       }
     } catch {
       console.error('Failed to fetch users');
@@ -216,6 +223,7 @@ export default function AdminPanel() {
       if (res.ok) {
         setLogs(data.logs || []);
         setLogStats(data.stats || null);
+        setLogsTotalCount(data.pagination?.total || 0);
       }
     } catch {
       console.error('Failed to fetch logs');
@@ -309,7 +317,7 @@ export default function AdminPanel() {
               </Link>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">管理パネル</h1>
-                <p className="text-sm text-slate-500">Threads Studio Admin</p>
+                <p className="text-sm text-slate-500">Threads Studio Lab Admin</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -419,6 +427,12 @@ export default function AdminPanel() {
                     </div>
 
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                      {/* 件数表示 */}
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <span className="text-xs text-slate-500">
+                          全 {usersTotalCount} 件中 {Math.min((usersPage - 1) * usersPerPage + 1, usersTotalCount)}-{Math.min(usersPage * usersPerPage, usersTotalCount)} 件を表示
+                        </span>
+                      </div>
                       <table className="w-full">
                         <thead className="bg-slate-50 border-b border-slate-200">
                           <tr>
@@ -474,6 +488,53 @@ export default function AdminPanel() {
                           ))}
                         </tbody>
                       </table>
+
+                      {/* ページネーション */}
+                      {usersTotalPages > 1 && (
+                        <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+                          <button
+                            onClick={() => setUsersPage(p => Math.max(1, p - 1))}
+                            disabled={usersPage <= 1}
+                            className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50"
+                          >
+                            前へ
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(usersTotalPages, 7) }, (_, i) => {
+                              let pageNum: number;
+                              if (usersTotalPages <= 7) {
+                                pageNum = i + 1;
+                              } else if (usersPage <= 4) {
+                                pageNum = i + 1;
+                              } else if (usersPage >= usersTotalPages - 3) {
+                                pageNum = usersTotalPages - 6 + i;
+                              } else {
+                                pageNum = usersPage - 3 + i;
+                              }
+                              return (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => setUsersPage(pageNum)}
+                                  className={`w-8 h-8 text-sm rounded-lg ${
+                                    usersPage === pageNum
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'text-slate-600 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <button
+                            onClick={() => setUsersPage(p => Math.min(usersTotalPages, p + 1))}
+                            disabled={usersPage >= usersTotalPages}
+                            className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50"
+                          >
+                            次へ
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -763,17 +824,19 @@ export default function AdminPanel() {
                           <button
                             onClick={() => setLogsPage(p => Math.max(1, p - 1))}
                             disabled={logsPage <= 1}
-                            className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800 disabled:opacity-50"
+                            className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50"
                           >
-                            前のページ
+                            前へ
                           </button>
-                          <span className="text-sm text-slate-500">ページ {logsPage}</span>
+                          <span className="text-sm text-slate-500">
+                            ページ {logsPage} / 全 {logsTotalCount} 件
+                          </span>
                           <button
                             onClick={() => setLogsPage(p => p + 1)}
                             disabled={logs.length < 50}
-                            className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800 disabled:opacity-50"
+                            className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-50"
                           >
-                            次のページ
+                            次へ
                           </button>
                         </div>
                       )}

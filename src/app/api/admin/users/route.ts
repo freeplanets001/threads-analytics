@@ -28,20 +28,27 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const role = searchParams.get('role') || 'all';
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const perPage = Math.min(100, Math.max(1, parseInt(searchParams.get('perPage') || '20')));
 
-    // 実際のユーザーデータを取得
+    const where = {
+      AND: [
+        search ? {
+          OR: [
+            { email: { contains: search, mode: 'insensitive' as const } },
+            { name: { contains: search, mode: 'insensitive' as const } },
+          ],
+        } : {},
+        role !== 'all' ? { role: role as Role } : {},
+      ],
+    };
+
+    // 総件数を取得
+    const totalCount = await prisma.user.count({ where });
+
+    // ページネーション付きでユーザーデータを取得
     const users = await prisma.user.findMany({
-      where: {
-        AND: [
-          search ? {
-            OR: [
-              { email: { contains: search, mode: 'insensitive' } },
-              { name: { contains: search, mode: 'insensitive' } },
-            ],
-          } : {},
-          role !== 'all' ? { role: role as Role } : {},
-        ],
-      },
+      where,
       select: {
         id: true,
         email: true,
@@ -56,7 +63,8 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      skip: (page - 1) * perPage,
+      take: perPage,
     });
 
     const formattedUsers = users.map(u => ({
@@ -69,7 +77,13 @@ export async function GET(request: NextRequest) {
       scheduledPostsCount: u._count.scheduledPosts,
     }));
 
-    return NextResponse.json({ users: formattedUsers });
+    return NextResponse.json({
+      users: formattedUsers,
+      totalCount,
+      page,
+      perPage,
+      totalPages: Math.ceil(totalCount / perPage),
+    });
   } catch (error) {
     console.error('Users fetch error:', error);
     return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });

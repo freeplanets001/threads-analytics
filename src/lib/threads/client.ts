@@ -1,4 +1,4 @@
-// Threads API Client - Threads Studio
+// Threads API Client - Threads Studio Lab
 
 const THREADS_API_BASE = 'https://graph.threads.net/v1.0';
 

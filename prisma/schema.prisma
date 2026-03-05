@@ -1,4 +1,4 @@
-// Threads Studio - Database Schema
+// Threads Studio Lab - Database Schema
 
 generator client {
   provider = "prisma-client-js"
@@ -113,6 +113,8 @@ model ThreadsAccount {
   profilePicture String?
   accessToken   String
   tokenExpiresAt DateTime?
+  appId         String?
+  appSecret     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

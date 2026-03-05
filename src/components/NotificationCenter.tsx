@@ -55,7 +55,7 @@ export function NotificationCenter({ onClose }: NotificationCenterProps) {
           id: '1',
           type: 'success',
           title: 'ようこそ！',
-          message: 'Threads Studioへようこそ。まずはアクセストークンを設定してください。',
+          message: 'Threads Studio Labへようこそ。まずはアクセストークンを設定してください。',
           read: false,
           createdAt: new Date().toISOString(),
         },

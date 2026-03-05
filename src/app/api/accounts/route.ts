@@ -23,6 +23,10 @@ export async function GET() {
         username: true,
         name: true,
         profilePicture: true,
+        accessToken: true,
+        tokenExpiresAt: true,
+        appId: true,
+        appSecret: true,
         createdAt: true,
       },
     });
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Database not available' }, { status: 503 });
     }
 
-    const { threadsUserId, username, name, profilePicture, accessToken } = await request.json();
+    const { threadsUserId, username, name, profilePicture, accessToken, appId, appSecret, tokenExpiresAt } = await request.json();
 
     if (!threadsUserId || !username || !accessToken) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -97,6 +101,9 @@ export async function POST(request: NextRequest) {
           name,
           profilePicture,
           accessToken,
+          ...(appId !== undefined && { appId }),
+          ...(appSecret !== undefined && { appSecret }),
+          ...(tokenExpiresAt !== undefined && { tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : null }),
           updatedAt: new Date(),
         },
       });
@@ -110,6 +117,9 @@ export async function POST(request: NextRequest) {
           name,
           profilePicture,
           accessToken,
+          appId: appId || null,
+          appSecret: appSecret || null,
+          tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt) : null,
         },
       });
     }

@@ -33,7 +33,10 @@ export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = fal
   const [sortKey, setSortKey] = useState<SortKey>('timestamp');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [filterType, setFilterType] = useState<'all' | 'text' | 'image' | 'video' | 'carousel'>('all');
-  const [dateRange, setDateRange] = useState<'all' | '7d' | '30d' | '90d'>('all');
+  const [dateRange, setDateRange] = useState<'all' | '7d' | '30d' | '90d' | 'custom'>('all');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+  const [engagementFilter, setEngagementFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
   const [itemsPerPage, setItemsPerPage] = useState<number>(20);
@@ -60,11 +63,30 @@ export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = fal
     }
 
     // 日付範囲フィルター
-    if (dateRange !== 'all') {
+    if (dateRange === 'custom') {
+      if (customDateFrom) {
+        const from = new Date(customDateFrom);
+        result = result.filter(p => new Date(p.timestamp) >= from);
+      }
+      if (customDateTo) {
+        const to = new Date(customDateTo + 'T23:59:59');
+        result = result.filter(p => new Date(p.timestamp) <= to);
+      }
+    } else if (dateRange !== 'all') {
       const now = new Date();
       const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
       const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
       result = result.filter(p => new Date(p.timestamp) >= cutoff);
+    }
+
+    // エンゲージメントフィルター
+    if (engagementFilter !== 'all') {
+      result = result.filter(p => {
+        const eng = (p.likes || 0) + (p.replies || 0) + (p.reposts || 0);
+        if (engagementFilter === 'high') return eng >= 50;
+        if (engagementFilter === 'medium') return eng >= 10 && eng < 50;
+        return eng < 10; // low
+      });
     }
 
     // ソート
@@ -102,7 +124,7 @@ export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = fal
     });
 
     return result;
-  }, [posts, searchQuery, sortKey, sortOrder, filterType, dateRange]);
+  }, [posts, searchQuery, sortKey, sortOrder, filterType, dateRange, customDateFrom, customDateTo, engagementFilter]);
 
   // ページネーション
   const totalPages = Math.ceil(filteredAndSortedPosts.length / itemsPerPage);
@@ -246,7 +268,7 @@ export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = fal
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
               placeholder="投稿を検索..."
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
           </div>
 
@@ -267,12 +289,25 @@ export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = fal
           <select
             value={dateRange}
             onChange={(e) => { setDateRange(e.target.value as typeof dateRange); setCurrentPage(1); }}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
           >
             <option value="all">全期間</option>
             <option value="7d">過去7日</option>
             <option value="30d">過去30日</option>
             <option value="90d">過去90日</option>
+            <option value="custom">カスタム</option>
+          </select>
+
+          {/* エンゲージメントフィルター */}
+          <select
+            value={engagementFilter}
+            onChange={(e) => { setEngagementFilter(e.target.value as typeof engagementFilter); setCurrentPage(1); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          >
+            <option value="all">全エンゲージメント</option>
+            <option value="high">高 (50+)</option>
+            <option value="medium">中 (10-49)</option>
+            <option value="low">低 (10未満)</option>
           </select>
 
           {/* 表示件数 */}
@@ -292,6 +327,33 @@ export function PostsAnalyticsTable({ posts, onRefresh, onLoadAll, loading = fal
             <option value="all">全件表示</option>
           </select>
         </div>
+
+        {/* カスタム日付範囲 */}
+        {dateRange === 'custom' && (
+          <div className="flex items-center gap-2 mt-3">
+            <input
+              type="date"
+              value={customDateFrom}
+              onChange={(e) => { setCustomDateFrom(e.target.value); setCurrentPage(1); }}
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            <span className="text-sm text-slate-400">〜</span>
+            <input
+              type="date"
+              value={customDateTo}
+              onChange={(e) => { setCustomDateTo(e.target.value); setCurrentPage(1); }}
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            {(customDateFrom || customDateTo) && (
+              <button
+                onClick={() => { setCustomDateFrom(''); setCustomDateTo(''); setCurrentPage(1); }}
+                className="px-2 py-1 text-xs text-slate-500 hover:text-slate-700"
+              >
+                クリア
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 統計サマリー */}

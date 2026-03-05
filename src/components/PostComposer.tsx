@@ -69,8 +69,40 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
     full: 'h-64',
   };
 
+  // プレビューモード
+  const [showPreview, setShowPreview] = useState(false);
+
   const charCount = text.length;
   const maxChars = 500;
+  const charsRemaining = maxChars - charCount;
+  const charWarningLevel: 'normal' | 'warning' | 'danger' | 'over' =
+    charCount > maxChars ? 'over' :
+    charsRemaining <= 20 ? 'danger' :
+    charsRemaining <= 50 ? 'warning' : 'normal';
+  const charProgressPercent = Math.min((charCount / maxChars) * 100, 100);
+
+  // キーボードショートカット
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Enter / Cmd+Enter で投稿
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!posting && !(postType === 'text' && !text.trim()) && charCount <= maxChars) {
+          handlePost();
+        }
+      }
+      // Escape でパネルを閉じる
+      if (e.key === 'Escape') {
+        if (showAiPanel) setShowAiPanel(false);
+        else if (showSchedulePicker) setShowSchedulePicker(false);
+        else if (showPreview) setShowPreview(false);
+        else if (showImageGenerator) setShowImageGenerator(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [posting, postType, text, charCount, showAiPanel, showSchedulePicker, showPreview, showImageGenerator]);
 
   // APIキーの読み込み
   useEffect(() => {
@@ -406,9 +438,34 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                   </button>
                 ))}
               </div>
-              <span className={`text-xs ${charCount > maxChars ? 'text-red-500' : 'text-slate-500'}`}>
-                {charCount}/{maxChars}
-              </span>
+              <div className="flex items-center gap-2">
+                {/* 文字数プログレスリング */}
+                <div className="relative w-6 h-6">
+                  <svg className="w-6 h-6 -rotate-90" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="#e2e8f0" strokeWidth="2" />
+                    <circle
+                      cx="12" cy="12" r="10" fill="none"
+                      strokeWidth="2"
+                      strokeDasharray={`${charProgressPercent * 0.628} 62.8`}
+                      strokeLinecap="round"
+                      className={
+                        charWarningLevel === 'over' ? 'stroke-red-500' :
+                        charWarningLevel === 'danger' ? 'stroke-red-400' :
+                        charWarningLevel === 'warning' ? 'stroke-amber-400' :
+                        'stroke-violet-400'
+                      }
+                    />
+                  </svg>
+                </div>
+                <span className={`text-xs font-medium ${
+                  charWarningLevel === 'over' ? 'text-red-500' :
+                  charWarningLevel === 'danger' ? 'text-red-400' :
+                  charWarningLevel === 'warning' ? 'text-amber-500' :
+                  'text-slate-500'
+                }`}>
+                  {charWarningLevel === 'over' ? `-${charCount - maxChars}` : charsRemaining}
+                </span>
+              </div>
             </div>
           </div>
           <textarea
@@ -709,6 +766,14 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
                 placeholder="テキスト"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm h-20 resize-none mb-3 text-slate-900 placeholder-slate-400"
               />
+              <div className="flex justify-end mb-2">
+                <span className={`text-xs ${
+                  post.text.length > 500 ? 'text-red-500 font-medium' :
+                  post.text.length > 450 ? 'text-amber-500' : 'text-slate-400'
+                }`}>
+                  {post.text.length}/500
+                </span>
+              </div>
 
               {/* 画像アップロード */}
               <div className="mb-2">
@@ -823,6 +888,57 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
         </div>
       )}
 
+      {/* Post Preview */}
+      {showPreview && (
+        <div className="mb-4 p-4 bg-white rounded-lg border-2 border-slate-200">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-700">プレビュー</h4>
+            <button onClick={() => setShowPreview(false)} className="text-xs text-slate-400 hover:text-slate-600">閉じる</button>
+          </div>
+          {postType === 'thread' ? (
+            <div className="space-y-3">
+              {threadPosts.map((post, index) => (
+                <div key={index} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-slate-300 flex-shrink-0" />
+                    {index < threadPosts.length - 1 && <div className="w-0.5 flex-1 bg-slate-200 mt-1" />}
+                  </div>
+                  <div className="flex-1 pb-3">
+                    <p className="text-xs font-semibold text-slate-900 mb-1">@username</p>
+                    <p className="text-sm text-slate-800 whitespace-pre-wrap">{post.text || '(テキストなし)'}</p>
+                    {post.imageUrl && <div className="mt-2 w-full h-32 bg-slate-100 rounded-lg flex items-center justify-center text-xs text-slate-400">画像</div>}
+                    {post.videoUrl && <div className="mt-2 w-full h-32 bg-slate-100 rounded-lg flex items-center justify-center text-xs text-slate-400">動画</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-slate-300 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-slate-900 mb-1">@username</p>
+                <p className="text-sm text-slate-800 whitespace-pre-wrap">{text || '(テキストなし)'}</p>
+                {postType === 'image' && imageUrl && (
+                  <div className="mt-2 rounded-lg overflow-hidden border border-slate-200">
+                    <img src={imageUrl} alt="preview" className="max-h-48 object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  </div>
+                )}
+                {postType === 'video' && videoUrl && <div className="mt-2 w-full h-32 bg-slate-100 rounded-lg flex items-center justify-center text-xs text-slate-400">動画プレビュー</div>}
+                {postType === 'carousel' && carouselItems.length > 0 && (
+                  <div className="mt-2 flex gap-1 overflow-x-auto">
+                    {carouselItems.map((item, i) => (
+                      <div key={i} className="w-24 h-24 bg-slate-100 rounded flex-shrink-0 flex items-center justify-center text-xs text-slate-400">
+                        {item.type === 'IMAGE' ? '画像' : '動画'} {i + 1}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex gap-3">
         <button
@@ -831,6 +947,18 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
           className="flex-1 py-3 bg-violet-600 text-white font-semibold rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50"
         >
           {posting ? '投稿中...' : '投稿する'}
+        </button>
+        <button
+          onClick={() => setShowPreview(!showPreview)}
+          className={`px-4 py-3 rounded-lg font-medium transition-colors ${
+            showPreview ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+          title="プレビュー"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
         </button>
         {accountId && (
           <button
@@ -842,6 +970,10 @@ export function PostComposer({ accessToken, accountId, onPostSuccess, initialTex
           </button>
         )}
       </div>
+      {/* Keyboard shortcut hint */}
+      <p className="text-xs text-slate-400 mt-2 text-right">
+        Ctrl+Enter で投稿 / Esc でパネルを閉じる
+      </p>
     </div>
   );
 }
