@@ -5,6 +5,12 @@ import { ThreadsAPIClient } from '@/lib/threads/client';
 // Vercel Cron認証
 const CRON_SECRET = process.env.CRON_SECRET;
 
+// processingが一定時間以上続いた場合にfailedに戻すタイムアウト（ミリ秒）
+const PROCESSING_TIMEOUT_MS = 5 * 60 * 1000; // 5分
+
+// Vercel Functionsの最大実行時間を60秒に設定
+export const maxDuration = 60;
+
 // Webhook通知を送信
 async function sendWebhookNotification(payload: {
   type: 'post_success' | 'post_failed';
@@ -45,9 +51,13 @@ async function sendWebhookNotification(payload: {
 // 予約投稿・定期投稿を処理するCronジョブ
 export async function GET(request: NextRequest) {
   try {
-    // Cron認証チェック（本番環境用）
+    // Cron認証チェック（CRON_SECRET未設定時は全拒否）
     const authHeader = request.headers.get('authorization');
-    if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+    if (!CRON_SECRET) {
+      console.error('CRON_SECRET is not configured');
+      return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
+    }
+    if (authHeader !== `Bearer ${CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -57,6 +67,22 @@ export async function GET(request: NextRequest) {
 
     const now = new Date();
     const results: Array<{ id: string; type: string; status: string; error?: string }> = [];
+
+    // 0. processing状態が長時間続いている投稿をfailedに戻す（重複実行防止）
+    const stuckThreshold = new Date(now.getTime() - PROCESSING_TIMEOUT_MS);
+    const stuckPosts = await prisma.scheduledPost.updateMany({
+      where: {
+        status: 'processing',
+        updatedAt: { lt: stuckThreshold },
+      },
+      data: {
+        status: 'failed',
+        errorMessage: 'タイムアウト: 処理が完了しませんでした。再度予約してください。',
+      },
+    });
+    if (stuckPosts.count > 0) {
+      console.log(`Recovered ${stuckPosts.count} stuck posts`);
+    }
 
     // 1. 予約投稿を処理（scheduledAtが現在時刻以前でpendingのもの）
     const scheduledPosts = await prisma.scheduledPost.findMany({
@@ -73,6 +99,9 @@ export async function GET(request: NextRequest) {
           },
         },
       },
+      // 古い順に処理、1回のcron実行で最大5件まで（タイムアウト防止）
+      orderBy: { scheduledAt: 'asc' },
+      take: 5,
     });
 
     for (const post of scheduledPosts) {
@@ -104,6 +133,8 @@ export async function GET(request: NextRequest) {
           },
         },
       },
+      orderBy: { scheduledAt: 'asc' },
+      take: 5,
     });
 
     for (const post of recurringPosts) {
@@ -140,10 +171,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 3. 残りの未処理投稿数を返す（次回cronで処理される）
+    const remainingCount = await prisma.scheduledPost.count({
+      where: {
+        status: 'pending',
+        scheduledAt: { lte: now },
+      },
+    });
+
     return NextResponse.json({
       success: true,
       timestamp: now.toISOString(),
       processed: results.length,
+      remaining: remainingCount,
+      recoveredStuck: stuckPosts.count,
       results,
     });
 
@@ -166,11 +207,16 @@ async function processPost(post: {
   account: { accessToken: string };
 }): Promise<{ status: string; error?: string }> {
   try {
-    // ステータスを処理中に更新
-    await prisma!.scheduledPost.update({
-      where: { id: post.id },
+    // ステータスを処理中に更新（楽観的ロック: pendingのものだけ更新）
+    const updated = await prisma!.scheduledPost.updateMany({
+      where: { id: post.id, status: 'pending' },
       data: { status: 'processing' },
     });
+
+    // 他のプロセスが先に処理を開始していた場合はスキップ
+    if (updated.count === 0) {
+      return { status: 'skipped', error: '別のプロセスが処理中です' };
+    }
 
     const client = new ThreadsAPIClient(post.account.accessToken);
 
@@ -211,7 +257,8 @@ async function processPost(post: {
         videoUrl?: string;
       }>;
       const result = await client.postThread(threadPostsData);
-      postedId = result.ids[0];
+      // スレッドの全IDをカンマ区切りで保存
+      postedId = result.ids.join(',');
     } else {
       // テキストとして投稿
       const result = await client.postText(post.text || '');
@@ -233,13 +280,17 @@ async function processPost(post: {
     console.error(`Failed to post ${post.id}:`, error);
 
     // 失敗
-    await prisma!.scheduledPost.update({
-      where: { id: post.id },
-      data: {
-        status: 'failed',
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-      },
-    });
+    try {
+      await prisma!.scheduledPost.update({
+        where: { id: post.id },
+        data: {
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+    } catch (dbError) {
+      console.error(`Failed to update post status for ${post.id}:`, dbError);
+    }
 
     return {
       status: 'failed',
@@ -312,10 +363,15 @@ function calculateNextSchedule(post: {
       nextSchedule.setDate(nextSchedule.getDate() + 7);
       break;
 
-    case 'monthly':
-      // 来月の同じ日
+    case 'monthly': {
+      // 来月の同じ日（月末対策付き）
+      const targetDay = baseTime.getDate();
       nextSchedule.setMonth(nextSchedule.getMonth() + 1);
+      // 月末を超える場合（例: 1/31 → 2/28）
+      const lastDayOfMonth = new Date(nextSchedule.getFullYear(), nextSchedule.getMonth() + 1, 0).getDate();
+      nextSchedule.setDate(Math.min(targetDay, lastDayOfMonth));
       break;
+    }
 
     default:
       return null;

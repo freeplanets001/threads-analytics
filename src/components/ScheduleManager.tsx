@@ -50,6 +50,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
   const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
 
+  // 単一削除の確認
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+
   // 編集
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editType, setEditType] = useState<string>('text');
@@ -249,12 +252,11 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
 
   // スケジュール投稿を削除
   const handleDeletePost = async (id: string) => {
-    if (!confirm('この予約投稿を削除しますか？')) return;
-
     if (useApi) {
       try {
         const response = await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
         if (response.ok) {
+          setConfirmingDeleteId(null);
           await fetchScheduledPosts();
           if (onRefresh) onRefresh();
           return;
@@ -264,6 +266,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
       }
     }
 
+    setConfirmingDeleteId(null);
     saveToLocal(posts.filter(p => p.id !== id));
     if (onRefresh) onRefresh();
   };
@@ -1021,24 +1024,44 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
                       </div>
                       {post.status === 'pending' && (
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => startEdit(post)}
-                            className="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
-                            title="編集"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDeletePost(post.id)}
-                            className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                            title="削除"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          {confirmingDeleteId === post.id ? (
+                            <>
+                              <span className="text-xs text-red-600 dark:text-red-400 mr-1">削除しますか？</span>
+                              <button
+                                onClick={() => setConfirmingDeleteId(null)}
+                                className="px-2 py-1 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                              >
+                                キャンセル
+                              </button>
+                              <button
+                                onClick={() => handleDeletePost(post.id)}
+                                className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 font-medium"
+                              >
+                                削除する
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => startEdit(post)}
+                                className="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
+                                title="編集"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setConfirmingDeleteId(post.id)}
+                                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                title="削除"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
