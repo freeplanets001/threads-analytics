@@ -75,6 +75,22 @@ export default function GuidePage() {
                   Threads Studio Lab は、Meta社のThreadsアプリのための高機能な分析・投稿管理ツールです。
                 </p>
 
+                {/* 完全マニュアルへのリンク */}
+                <a
+                  href="/manual.html"
+                  className="block p-5 bg-gradient-to-r from-violet-500 to-indigo-600 rounded-xl text-white hover:from-violet-600 hover:to-indigo-700 transition-all shadow-lg"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold">初心者向け完全マニュアル</h3>
+                      <p className="text-sm text-violet-100 mt-1">
+                        Facebook Developer登録からアクセストークン取得、全機能の使い方まで網羅的に解説
+                      </p>
+                    </div>
+                    <span className="text-2xl">→</span>
+                  </div>
+                </a>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-5 bg-violet-50 rounded-xl">
                     <h3 className="font-semibold text-violet-900 mb-2">詳細な分析</h3>
