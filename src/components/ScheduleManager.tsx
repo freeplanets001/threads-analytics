@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { CsvImportModal } from './CsvImportModal';
 import { exportScheduledPostsToCsv } from '@/lib/csv-utils';
 
@@ -29,6 +29,9 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   const [error, setError] = useState<string | null>(null);
   const [useApi, setUseApi] = useState(false);
   const [apiErrorDetail, setApiErrorDetail] = useState<string | null>(null);
+  const [autoExecuting, setAutoExecuting] = useState(false);
+  const [lastExecuteResult, setLastExecuteResult] = useState<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 新規スケジュール投稿用
   const [showAddForm, setShowAddForm] = useState(false);
@@ -202,6 +205,61 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   useEffect(() => {
     fetchScheduledPosts();
   }, [fetchScheduledPosts]);
+
+  // 自動実行: pending投稿があれば60秒毎にサーバーに実行を依頼
+  const executeScheduledPosts = useCallback(async () => {
+    if (!useApi || autoExecuting) return;
+
+    // pending投稿で予約時刻を過ぎたものがあるか確認
+    const now = new Date();
+    const hasPendingDue = posts.some(
+      p => p.status === 'pending' && new Date(p.scheduledAt) <= now
+    );
+    if (!hasPendingDue) return;
+
+    setAutoExecuting(true);
+    try {
+      const response = await fetch('/api/scheduled/execute', { method: 'POST' });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.executed > 0) {
+          setLastExecuteResult(`${data.executed}件の投稿を実行しました`);
+          // 実行後にリストを更新
+          await fetchScheduledPosts();
+          setTimeout(() => setLastExecuteResult(null), 5000);
+        }
+      }
+    } catch (e) {
+      console.error('Auto-execute failed:', e);
+    } finally {
+      setAutoExecuting(false);
+    }
+  }, [useApi, autoExecuting, posts, fetchScheduledPosts]);
+
+  // ポーリングタイマー: 60秒毎に自動実行チェック
+  useEffect(() => {
+    if (!useApi) {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      return;
+    }
+
+    // 初回は5秒後にチェック（ページ読み込み直後の実行用）
+    const initialTimer = setTimeout(() => executeScheduledPosts(), 5000);
+
+    // 以降60秒毎
+    pollTimerRef.current = setInterval(() => executeScheduledPosts(), 60 * 1000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [useApi, executeScheduledPosts]);
 
   // 選択状態をリセット
   useEffect(() => {
@@ -823,7 +881,18 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
           }`}>
             {useApi ? (
               <>
-                <strong>サーバー連携有効:</strong> 予約投稿はサーバー側で10分毎に自動実行されます。
+                <strong>サーバー連携有効:</strong> この画面を開いている間、予約時刻に達した投稿は自動的に実行されます。
+                {autoExecuting && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-indigo-500">
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full" />
+                    実行中...
+                  </span>
+                )}
+                {lastExecuteResult && (
+                  <span className="block mt-1 text-xs text-green-600 dark:text-green-400">
+                    {lastExecuteResult}
+                  </span>
+                )}
               </>
             ) : (
               <>

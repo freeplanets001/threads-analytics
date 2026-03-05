@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, isDatabaseAvailable } from '@/lib/db';
-import { ThreadsAPIClient } from '@/lib/threads/client';
+import { processPost, recoverStuckPosts } from '@/lib/scheduled/execute';
 
 // Vercel Cron認証
 const CRON_SECRET = process.env.CRON_SECRET;
-
-// processingが一定時間以上続いた場合にfailedに戻すタイムアウト（ミリ秒）
-const PROCESSING_TIMEOUT_MS = 5 * 60 * 1000; // 5分
 
 // Vercel Functionsの最大実行時間を60秒に設定
 export const maxDuration = 60;
@@ -69,20 +66,7 @@ export async function GET(request: NextRequest) {
     const results: Array<{ id: string; type: string; status: string; error?: string }> = [];
 
     // 0. processing状態が長時間続いている投稿をfailedに戻す（重複実行防止）
-    const stuckThreshold = new Date(now.getTime() - PROCESSING_TIMEOUT_MS);
-    const stuckPosts = await prisma.scheduledPost.updateMany({
-      where: {
-        status: 'processing',
-        updatedAt: { lt: stuckThreshold },
-      },
-      data: {
-        status: 'failed',
-        errorMessage: 'タイムアウト: 処理が完了しませんでした。再度予約してください。',
-      },
-    });
-    if (stuckPosts.count > 0) {
-      console.log(`Recovered ${stuckPosts.count} stuck posts`);
-    }
+    const recoveredCount = await recoverStuckPosts();
 
     // 1. 予約投稿を処理（scheduledAtが現在時刻以前でpendingのもの）
     const scheduledPosts = await prisma.scheduledPost.findMany({
@@ -184,7 +168,7 @@ export async function GET(request: NextRequest) {
       timestamp: now.toISOString(),
       processed: results.length,
       remaining: remainingCount,
-      recoveredStuck: stuckPosts.count,
+      recoveredStuck: recoveredCount,
       results,
     });
 
@@ -194,108 +178,6 @@ export async function GET(request: NextRequest) {
       { error: 'Cron job failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
-  }
-}
-
-// 投稿を実行
-async function processPost(post: {
-  id: string;
-  type: string;
-  text: string | null;
-  mediaUrls: string | null;
-  threadPosts: string | null;
-  account: { accessToken: string };
-}): Promise<{ status: string; error?: string }> {
-  try {
-    // ステータスを処理中に更新（楽観的ロック: pendingのものだけ更新）
-    const updated = await prisma!.scheduledPost.updateMany({
-      where: { id: post.id, status: 'pending' },
-      data: { status: 'processing' },
-    });
-
-    // 他のプロセスが先に処理を開始していた場合はスキップ
-    if (updated.count === 0) {
-      return { status: 'skipped', error: '別のプロセスが処理中です' };
-    }
-
-    const client = new ThreadsAPIClient(post.account.accessToken);
-
-    let postedId: string;
-
-    // 投稿タイプに応じて処理
-    if (post.type === 'text' || (!post.mediaUrls && !post.threadPosts)) {
-      // テキスト投稿
-      const result = await client.postText(post.text || '');
-      postedId = result.id;
-    } else if (post.type === 'image') {
-      // 画像投稿
-      const mediaUrls = JSON.parse(post.mediaUrls!) as string[];
-      const result = await client.postImage(mediaUrls[0], post.text || undefined);
-      postedId = result.id;
-    } else if (post.type === 'video') {
-      // 動画投稿
-      const mediaUrls = JSON.parse(post.mediaUrls!) as string[];
-      const result = await client.postVideo(mediaUrls[0], post.text || undefined);
-      postedId = result.id;
-    } else if (post.type === 'carousel') {
-      // カルーセル投稿
-      const mediaUrls = JSON.parse(post.mediaUrls!) as string[];
-      const items = mediaUrls.map(url => ({
-        type: url.match(/\.(mp4|mov|webm)$/i) ? 'VIDEO' : 'IMAGE' as 'VIDEO' | 'IMAGE',
-        url,
-      }));
-      const result = await client.postCarousel(items, post.text || undefined);
-      postedId = result.id;
-    } else if (post.type === 'thread') {
-      // スレッド投稿
-      if (!post.threadPosts) {
-        throw new Error('Thread posts data is missing');
-      }
-      const threadPostsData = JSON.parse(post.threadPosts) as Array<{
-        text: string;
-        imageUrl?: string;
-        videoUrl?: string;
-      }>;
-      const result = await client.postThread(threadPostsData);
-      // スレッドの全IDをカンマ区切りで保存
-      postedId = result.ids.join(',');
-    } else {
-      // テキストとして投稿
-      const result = await client.postText(post.text || '');
-      postedId = result.id;
-    }
-
-    // 成功
-    await prisma!.scheduledPost.update({
-      where: { id: post.id },
-      data: {
-        status: 'completed',
-        postedId,
-      },
-    });
-
-    return { status: 'completed' };
-
-  } catch (error) {
-    console.error(`Failed to post ${post.id}:`, error);
-
-    // 失敗
-    try {
-      await prisma!.scheduledPost.update({
-        where: { id: post.id },
-        data: {
-          status: 'failed',
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        },
-      });
-    } catch (dbError) {
-      console.error(`Failed to update post status for ${post.id}:`, dbError);
-    }
-
-    return {
-      status: 'failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
   }
 }
 
