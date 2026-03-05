@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Threads Studio Lab 完全マニュアル</title>
+<style>
+/* ===== リセット & ベース ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+  line-height: 1.8; color: #1e1b2e; background: #f8f7fc;
+}
+a { color: #7c3aed; text-decoration: none; }
+a:hover { text-decoration: underline; }
+img { max-width: 100%; }
+
+/* ===== カラーパレット ===== */
+:root {
+  --primary: #7c3aed;
+  --primary-dark: #5b21b6;
+  --primary-light: #ede9fe;
+  --primary-50: #f5f3ff;
+  --accent: #a78bfa;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --text: #1e1b2e;
+  --text-light: #6b7280;
+  --bg: #f8f7fc;
+  --white: #ffffff;
+  --border: #e5e7eb;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --radius: 12px;
+  --sidebar-width: 280px;
+}
+
+/* ===== ヘッダー ===== */
+.header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white; height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; box-shadow: 0 2px 10px rgba(124,58,237,0.3);
+}
+.header-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 1.25rem; font-weight: 700; color: white;
+}
+.header-logo svg { width: 32px; height: 32px; }
+.header-nav { display: flex; gap: 20px; align-items: center; }
+.header-nav a { color: rgba(255,255,255,0.9); font-size: 0.875rem; font-weight: 500; }
+.header-nav a:hover { color: white; text-decoration: none; }
+.hamburger {
+  display: none; background: none; border: none; color: white;
+  font-size: 1.5rem; cursor: pointer; padding: 4px;
+}
+
+/* ===== サイドバー ===== */
+.sidebar {
+  position: fixed; top: 64px; left: 0; bottom: 0;
+  width: var(--sidebar-width); background: var(--white);
+  border-right: 1px solid var(--border); overflow-y: auto;
+  padding: 24px 0; z-index: 90;
+  transition: transform 0.3s ease;
+}
+.sidebar-title {
+  font-size: 0.75rem; font-weight: 700; color: var(--text-light);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 0 20px; margin-bottom: 12px;
+}
+.toc-list { list-style: none; }
+.toc-list li { margin: 0; }
+.toc-list a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 20px; font-size: 0.875rem; color: var(--text);
+  border-left: 3px solid transparent; transition: all 0.2s;
+}
+.toc-list a:hover {
+  background: var(--primary-50); color: var(--primary);
+  border-left-color: var(--accent); text-decoration: none;
+}
+.toc-list a .toc-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--primary-light); color: var(--primary);
+  font-size: 0.7rem; font-weight: 700; flex-shrink: 0;
+}
+.sidebar-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5); z-index: 89;
+}
+
+/* ===== メインコンテンツ ===== */
+.main {
+  margin-left: var(--sidebar-width); margin-top: 64px;
+  padding: 40px 48px; max-width: 900px;
+}
+
+/* ===== セクション ===== */
+.section { margin-bottom: 64px; }
+.section-header {
+  display: flex; align-items: center; gap: 16px;
+  margin-bottom: 32px; padding-bottom: 16px;
+  border-bottom: 2px solid var(--primary-light);
+}
+.section-num {
+  display: flex; align-items: center; justify-content: center;
+  width: 48px; height: 48px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white; font-size: 1.25rem; font-weight: 700; flex-shrink: 0;
+}
+.section-title { font-size: 1.75rem; font-weight: 700; color: var(--text); }
+
+/* サブセクション */
+h3 {
+  font-size: 1.25rem; font-weight: 700; color: var(--primary-dark);
+  margin: 32px 0 16px; padding-left: 12px;
+  border-left: 4px solid var(--primary);
+}
+h4 { font-size: 1.05rem; font-weight: 600; margin: 20px 0 10px; }
+
+p { margin-bottom: 16px; color: #374151; }
+
+/* ===== ステップ ===== */
+.steps { counter-reset: step; margin: 20px 0; }
+.step {
+  display: flex; gap: 16px; margin-bottom: 20px;
+  padding: 16px; background: var(--white); border-radius: var(--radius);
+  box-shadow: var(--shadow); position: relative;
+}
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--primary); color: white;
+  font-size: 0.875rem; font-weight: 700; flex-shrink: 0;
+}
+.step-content { flex: 1; }
+.step-content strong { color: var(--text); }
+
+/* ===== ボックス（ヒント・注意・警告） ===== */
+.box {
+  padding: 16px 20px; border-radius: var(--radius);
+  margin: 20px 0; display: flex; gap: 12px;
+  align-items: flex-start; font-size: 0.925rem;
+}
+.box-icon {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 700; flex-shrink: 0; color: white;
+}
+.box.tip { background: #ecfdf5; border: 1px solid #a7f3d0; }
+.box.tip .box-icon { background: var(--success); }
+.box.note { background: #eff6ff; border: 1px solid #bfdbfe; }
+.box.note .box-icon { background: var(--info); }
+.box.warn { background: #fffbeb; border: 1px solid #fde68a; }
+.box.warn .box-icon { background: var(--warning); }
+.box.danger { background: #fef2f2; border: 1px solid #fecaca; }
+.box.danger .box-icon { background: var(--danger); }
+
+/* ===== コードブロック ===== */
+.code-block {
+  position: relative; background: #1e1b2e; color: #e2e8f0;
+  padding: 16px 20px; border-radius: var(--radius); margin: 16px 0;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.85rem; overflow-x: auto; line-height: 1.6;
+}
+.code-block .copy-btn {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: #a78bfa; padding: 4px 12px; border-radius: 6px;
+  font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
+}
+.code-block .copy-btn:hover { background: rgba(255,255,255,0.2); }
+code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  background: var(--primary-light); color: var(--primary-dark);
+  padding: 2px 6px; border-radius: 4px; font-size: 0.85em;
+}
+.code-block code { background: none; color: inherit; padding: 0; }
+
+/* ===== URL表示 ===== */
+.url-block {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--primary-50); border: 1px solid var(--primary-light);
+  padding: 10px 16px; border-radius: 8px; margin: 12px 0;
+  font-size: 0.9rem; word-break: break-all;
+}
+.url-block .url-icon { color: var(--primary); flex-shrink: 0; }
+.url-block a { font-weight: 500; }
+.url-block .copy-btn {
+  margin-left: auto; background: var(--primary); color: white;
+  border: none; padding: 4px 12px; border-radius: 6px;
+  font-size: 0.75rem; cursor: pointer; flex-shrink: 0;
+}
+.url-block .copy-btn:hover { background: var(--primary-dark); }
+
+/* ===== テーブル ===== */
+.table-wrapper { overflow-x: auto; margin: 16px 0; }
+table {
+  width: 100%; border-collapse: collapse;
+  background: var(--white); border-radius: var(--radius);
+  overflow: hidden; box-shadow: var(--shadow);
+}
+thead { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); }
+th {
+  color: white; font-weight: 600; padding: 12px 16px;
+  text-align: left; font-size: 0.875rem;
+}
+td {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+tbody tr:hover { background: var(--primary-50); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* ===== UIモックアップ ===== */
+.mock-browser {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; margin: 20px 0; box-shadow: var(--shadow-lg);
+  background: var(--white);
+}
+.mock-browser-bar {
+  background: #f3f4f6; padding: 8px 12px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.mock-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+}
+.mock-dot.red { background: #ef4444; }
+.mock-dot.yellow { background: #f59e0b; }
+.mock-dot.green { background: #10b981; }
+.mock-address {
+  flex: 1; background: white; padding: 4px 12px;
+  border-radius: 6px; font-size: 0.75rem; color: var(--text-light);
+  margin-left: 8px; border: 1px solid var(--border);
+}
+.mock-body { padding: 20px; min-height: 200px; }
+
+/* モック：Metaダッシュボード */
+.mock-meta-nav {
+  background: #1877f2; color: white; padding: 10px 16px;
+  font-size: 0.8rem; font-weight: 600;
+  display: flex; align-items: center; gap: 16px;
+}
+.mock-meta-content { padding: 16px; }
+.mock-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; padding: 16px; margin: 8px 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.mock-btn {
+  display: inline-block; padding: 8px 20px; border-radius: 6px;
+  font-size: 0.8rem; font-weight: 600; cursor: default;
+}
+.mock-btn-primary { background: var(--primary); color: white; }
+.mock-btn-meta { background: #1877f2; color: white; }
+.mock-btn-green { background: var(--success); color: white; }
+.mock-btn-outline {
+  background: white; color: var(--primary);
+  border: 1px solid var(--primary);
+}
+.mock-input {
+  display: block; width: 100%; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 0.8rem; background: #f9fafb; margin: 4px 0;
+}
+.mock-label {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-light);
+  display: block; margin: 8px 0 4px;
+}
+.mock-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 12px;
+  font-size: 0.7rem; font-weight: 600;
+}
+.mock-badge-green { background: #d1fae5; color: #065f46; }
+.mock-badge-yellow { background: #fef3c7; color: #92400e; }
+.mock-badge-red { background: #fee2e2; color: #991b1b; }
+.mock-badge-purple { background: var(--primary-light); color: var(--primary-dark); }
+
+/* モック：TSLダッシュボード */
+.mock-tsl-header {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white; padding: 12px 16px; font-size: 0.85rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.mock-tsl-sidebar {
+  width: 180px; background: var(--primary-50); padding: 12px;
+  border-right: 1px solid var(--border);
+  font-size: 0.75rem;
+}
+.mock-tsl-sidebar-item {
+  padding: 6px 10px; border-radius: 6px; margin: 2px 0;
+  cursor: default;
+}
+.mock-tsl-sidebar-item.active {
+  background: var(--primary); color: white; font-weight: 600;
+}
+.mock-tsl-main { flex: 1; padding: 16px; }
+.mock-tsl-body { display: flex; min-height: 200px; }
+.mock-kpi {
+  text-align: center; padding: 12px;
+  border-radius: 8px; background: var(--primary-50);
+  flex: 1;
+}
+.mock-kpi-value {
+  font-size: 1.5rem; font-weight: 700; color: var(--primary);
+}
+.mock-kpi-label { font-size: 0.7rem; color: var(--text-light); }
+
+/* モック：フォーム */
+.mock-form-group { margin: 12px 0; }
+.mock-form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.mock-form-row > * { flex: 1; min-width: 200px; }
+
+/* モック：バーチャート */
+.mock-chart { display: flex; align-items: flex-end; gap: 8px; height: 100px; padding: 8px 0; }
+.mock-bar {
+  flex: 1; background: linear-gradient(180deg, var(--primary), var(--accent));
+  border-radius: 4px 4px 0 0; min-width: 20px;
+  position: relative;
+}
+.mock-bar-label {
+  position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+  font-size: 0.6rem; color: var(--text-light); white-space: nowrap;
+}
+
+/* ===== フロー図 ===== */
+.flow {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; margin: 20px 0; justify-content: center;
+}
+.flow-item {
+  background: var(--primary-light); color: var(--primary-dark);
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 0.85rem; font-weight: 600; text-align: center;
+}
+.flow-arrow { color: var(--accent); font-size: 1.2rem; }
+.flow-item.active {
+  background: var(--primary); color: white;
+}
+
+/* ===== チェックリスト ===== */
+.checklist { list-style: none; margin: 16px 0; }
+.checklist li {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 0; font-size: 0.925rem;
+}
+.checklist li::before {
+  content: '';
+  width: 20px; height: 20px; border-radius: 4px;
+  border: 2px solid var(--border); flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ===== 比較表 ===== */
+.plan-card {
+  border: 2px solid var(--border); border-radius: var(--radius);
+  padding: 24px; text-align: center; flex: 1; min-width: 220px;
+  background: var(--white); transition: transform 0.2s, box-shadow 0.2s;
+}
+.plan-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.plan-card.recommended {
+  border-color: var(--primary); position: relative;
+}
+.plan-card.recommended::before {
+  content: 'おすすめ';
+  position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+  background: var(--primary); color: white; padding: 2px 16px;
+  border-radius: 12px; font-size: 0.75rem; font-weight: 600;
+}
+.plan-name { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; }
+.plan-price { font-size: 2rem; font-weight: 800; color: var(--primary); margin: 12px 0; }
+.plan-price span { font-size: 0.875rem; font-weight: 400; color: var(--text-light); }
+.plan-features { list-style: none; text-align: left; margin: 16px 0; }
+.plan-features li {
+  padding: 6px 0; font-size: 0.85rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.plan-check { color: var(--success); font-weight: 700; }
+.plan-cross { color: #d1d5db; }
+.plans-container { display: flex; gap: 20px; flex-wrap: wrap; margin: 24px 0; }
+
+/* ===== FAQ / アコーディオン風 ===== */
+.faq-item {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius); margin: 8px 0; overflow: hidden;
+}
+.faq-q {
+  padding: 14px 20px; font-weight: 600; font-size: 0.925rem;
+  display: flex; align-items: center; gap: 10px; cursor: default;
+}
+.faq-q::before {
+  content: 'Q'; background: var(--primary); color: white;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+}
+.faq-a {
+  padding: 0 20px 14px 54px; font-size: 0.875rem; color: var(--text-light);
+}
+
+/* ===== エラーコード表 ===== */
+.error-code {
+  font-family: monospace; background: #fee2e2;
+  color: #991b1b; padding: 2px 6px; border-radius: 4px;
+  font-size: 0.8rem; font-weight: 600;
+}
+
+/* ===== 進行バー ===== */
+.progress-bar {
+  width: 100%; height: 6px; background: var(--primary-light);
+  border-radius: 3px; margin: 8px 0; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+}
+
+/* ===== フッター ===== */
+.footer {
+  margin-left: var(--sidebar-width); padding: 32px 48px;
+  border-top: 1px solid var(--border);
+  color: var(--text-light); font-size: 0.825rem;
+  text-align: center;
+}
+
+/* ===== レスポンシブ ===== */
+@media (max-width: 1024px) {
+  .main { padding: 32px 32px; }
+}
+@media (max-width: 768px) {
+  .hamburger { display: block; }
+  .header-nav { display: none; }
+  .sidebar {
+    transform: translateX(-100%);
+    width: 280px;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay.open { display: block; }
+  .main { margin-left: 0; padding: 24px 16px; }
+  .footer { margin-left: 0; padding: 24px 16px; }
+  .section-title { font-size: 1.4rem; }
+  .section-num { width: 40px; height: 40px; font-size: 1.1rem; }
+  .plans-container { flex-direction: column; }
+  .mock-tsl-body { flex-direction: column; }
+  .mock-tsl-sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+  .flow { flex-direction: column; }
+  .flow-arrow { transform: rotate(90deg); }
+}
+@media (max-width: 375px) {
+  html { font-size: 14px; }
+  .main { padding: 16px 12px; }
+}
+
+/* ===== 印刷スタイル ===== */
+@media print {
+  .header, .sidebar, .sidebar-overlay, .hamburger, .copy-btn { display: none !important; }
+  .main { margin-left: 0 !important; padding: 0 !important; max-width: 100% !important; }
+  .footer { margin-left: 0 !important; }
+  body { background: white !important; color: black !important; font-size: 11pt; }
+  .section { page-break-inside: avoid; }
+  .section-header { border-bottom-color: #999 !important; }
+  .section-num { background: #666 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .mock-browser, .mock-browser-bar { border-color: #ccc !important; }
+  .box { border-width: 2px !important; }
+  .code-block { background: #f3f4f6 !important; color: #1e1b2e !important; border: 1px solid #ccc; }
+  a { color: black !important; }
+  a::after { content: ' (' attr(href) ')'; font-size: 0.8em; color: #666; }
+  table, thead, th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .plan-card { border: 1px solid #999 !important; }
+  .url-block { background: #f3f4f6 !important; border-color: #ccc !important; }
+}
+
+/* ===== スクロールマージン ===== */
+[id] { scroll-margin-top: 80px; }
+</style>
+</head>
+<body>
+
+<!-- ===== ヘッダー ===== -->
+<header class="header">
+  <div class="header-logo">
+    <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" stroke="white" stroke-width="2.5"/><path d="M16 8v8l5.5 3" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="16" r="3" fill="white"/></svg>
+    Threads Studio Lab
+  </div>
+  <button class="hamburger" onclick="toggleSidebar()" aria-label="メニュー">&#9776;</button>
+  <nav class="header-nav">
+    <a href="https://threads-analytics-eight.vercel.app">アプリに戻る</a>
+    <a href="#section-1">はじめに</a>
+    <a href="#section-10">FAQ</a>
+  </nav>
+</header>
+
+<!-- ===== サイドバーオーバーレイ ===== -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<!-- ===== サイドバー ===== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-title">目次</div>
+  <ul class="toc-list">
+    <li><a href="#section-1"><span class="toc-num">1</span> はじめに</a></li>
+    <li><a href="#section-2"><span class="toc-num">2</span> Facebook開発者アカウントの登録</a></li>
+    <li><a href="#section-3"><span class="toc-num">3</span> Meta Appの作成</a></li>
+    <li><a href="#section-4"><span class="toc-num">4</span> Threads APIの有効化</a></li>
+    <li><a href="#section-5"><span class="toc-num">5</span> Threadsテスターの追加</a></li>
+    <li><a href="#section-6"><span class="toc-num">6</span> アクセストークンの取得</a></li>
+    <li><a href="#section-7"><span class="toc-num">7</span> Threads Studio Labへの登録</a></li>
+    <li><a href="#section-8"><span class="toc-num">8</span> Threadsアカウントの連携</a></li>
+    <li><a href="#section-9"><span class="toc-num">9</span> ダッシュボードの使い方</a></li>
+    <li><a href="#section-10"><span class="toc-num">10</span> トラブルシューティング</a></li>
+    <li><a href="#section-11"><span class="toc-num">11</span> 料金プラン</a></li>
+  </ul>
+  <div style="padding: 16px 20px; margin-top: 20px; border-top: 1px solid var(--border);">
+    <div style="font-size: 0.7rem; color: var(--text-light); margin-bottom: 8px;">進捗</div>
+    <div class="progress-bar"><div class="progress-fill" style="width: 0%" id="progressFill"></div></div>
+    <div style="font-size: 0.7rem; color: var(--text-light);" id="progressText">0 / 11 セクション</div>
+  </div>
+</aside>
+
+<!-- ===== メインコンテンツ ===== -->
+<main class="main">
+
+<!-- ==================== セクション 1: はじめに ==================== -->
+<section class="section" id="section-1">
+  <div class="section-header">
+    <div class="section-num">1</div>
+    <h2 class="section-title">はじめに</h2>
+  </div>
+
+  <h3>Threads Studio Lab とは</h3>
+  <p>
+    <strong>Threads Studio Lab</strong>は、Meta社が提供するSNS「Threads」の投稿管理・分析を行うWebアプリケーションです。Threads APIを活用して、投稿の作成・予約投稿・パフォーマンス分析・下書き管理など、Threads運用に必要な機能を一元管理できます。
+  </p>
+
+  <div class="flow">
+    <div class="flow-item">Threadsアカウント</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item">Meta API連携</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item active">Threads Studio Lab</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item">投稿・分析・管理</div>
+  </div>
+
+  <h3>このマニュアルで学べること</h3>
+  <ul class="checklist">
+    <li>Facebook開発者アカウントの登録からMeta Appの作成まで</li>
+    <li>Threads APIの有効化とアクセストークンの取得</li>
+    <li>Threads Studio Labへのアカウント登録と連携</li>
+    <li>ダッシュボードを使った投稿管理と分析</li>
+    <li>トラブルが起きた場合の対処法</li>
+  </ul>
+
+  <h3>必要なもの</h3>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>必要なもの</th><th>説明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Facebookアカウント</strong></td><td>Meta開発者プラットフォームへのログインに必要です</td></tr>
+        <tr><td><strong>Threadsアカウント</strong></td><td>プロフェッショナルアカウント（公開設定）が推奨です</td></tr>
+        <tr><td><strong>PCまたはスマートフォン</strong></td><td>モダンなWebブラウザ（Chrome, Safari, Firefox, Edge）が動作する環境</td></tr>
+        <tr><td><strong>メールアドレス</strong></td><td>開発者登録やアカウント作成に使用します</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box tip">
+    <div class="box-icon">&#10003;</div>
+    <div><strong>ヒント:</strong> 所要時間の目安は、初めての方で約30〜45分です。このマニュアルを上から順に進めれば、確実にセットアップが完了します。</div>
+  </div>
+
+  <div class="box note">
+    <div class="box-icon">i</div>
+    <div><strong>メモ:</strong> Threadsアカウントは<strong>公開アカウント</strong>である必要があります。非公開（鍵付き）アカウントではAPIが正常に動作しない場合があります。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 2: Facebook開発者アカウントの登録 ==================== -->
+<section class="section" id="section-2">
+  <div class="section-header">
+    <div class="section-num">2</div>
+    <h2 class="section-title">Facebook開発者アカウントの登録</h2>
+  </div>
+
+  <p>Threads APIを利用するには、まずFacebook（Meta）の開発者アカウントが必要です。すでに開発者アカウントをお持ちの場合は、<a href="#section-3">セクション3</a>にお進みください。</p>
+
+  <h3>開発者サイトにアクセス</h3>
+
+  <div class="url-block">
+    <span class="url-icon">&#128279;</span>
+    <a href="https://developers.facebook.com" target="_blank" rel="noopener">https://developers.facebook.com</a>
+    <button class="copy-btn" onclick="copyText('https://developers.facebook.com')">コピー</button>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        上記URLにアクセスし、右上の <strong>「ログイン」</strong> ボタンをクリックします。お使いのFacebookアカウントでログインしてください。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        初めてアクセスする場合、<strong>「スタート」</strong>（Get Started）ボタンが表示されます。クリックして開発者登録に進みます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>Meta Platform利用規約</strong>が表示されます。内容を確認し、同意のチェックボックスにチェックを入れて <strong>「次へ」</strong> をクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>メールアドレスの確認</strong>を求められます。Facebookアカウントに登録済みのメールアドレスに確認メールが届くので、メール内のリンクをクリックして認証を完了させます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>開発者としての役割</strong>を選択します（「開発者」を選択で問題ありません）。これで開発者アカウントの作成は完了です。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：開発者登録画面 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">developers.facebook.com</span>
+    </div>
+    <div class="mock-meta-nav">
+      <span>Meta for Developers</span>
+      <span style="margin-left: auto; font-weight: 400; font-size: 0.75rem;">ドキュメント &nbsp; ツール &nbsp; サポート</span>
+    </div>
+    <div class="mock-meta-content" style="text-align: center; padding: 40px;">
+      <div style="font-size: 1.3rem; font-weight: 700; margin-bottom: 8px;">Meta for Developersへようこそ</div>
+      <div style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 20px;">アプリを構築して世界とつながりましょう</div>
+      <span class="mock-btn mock-btn-meta">スタート</span>
+    </div>
+  </div>
+
+  <h3>二段階認証の設定</h3>
+  <p>Meta開発者プラットフォームでは、セキュリティ上の理由から<strong>二段階認証（2FA）</strong>が必須になっている場合があります。</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        二段階認証を求められた場合、Facebookの<strong>「設定とプライバシー」→「セキュリティとログイン」</strong>にアクセスします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「二段階認証を使用」</strong>をクリックし、認証アプリ（Google Authenticator等）またはSMS認証を設定します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        設定完了後、開発者サイトに戻って再度ログインすると、登録を続行できます。
+      </div>
+    </div>
+  </div>
+
+  <div class="box warn">
+    <div class="box-icon">!</div>
+    <div><strong>注意:</strong> 二段階認証の設定には、スマートフォンに認証アプリ（Google Authenticator, Microsoft Authenticator等）のインストールが必要な場合があります。事前にインストールしておくとスムーズです。</div>
+  </div>
+
+  <h3>よくあるトラブル</h3>
+  <div class="faq-item">
+    <div class="faq-q">ログインできない</div>
+    <div class="faq-a">Facebookアカウントのパスワードをリセットしてください。また、Facebook側のアカウントが制限されていないか確認してください。</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">確認メールが届かない</div>
+    <div class="faq-a">迷惑メールフォルダを確認してください。「noreply@facebookmail.com」からのメールが届きます。それでも届かない場合は、Facebookアカウントのメールアドレスを変更してから再試行してください。</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">「開発者として登録できません」と表示される</div>
+    <div class="faq-a">Facebookアカウントの作成から間もない場合や、アカウントに制限がかかっている場合に発生します。数日経ってから再度お試しください。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 3: Meta Appの作成 ==================== -->
+<section class="section" id="section-3">
+  <div class="section-header">
+    <div class="section-num">3</div>
+    <h2 class="section-title">Meta Appの作成</h2>
+  </div>
+
+  <p>開発者アカウントが準備できたら、Threads APIを利用するための「Meta App」（アプリ）を作成します。</p>
+
+  <h3>アプリの新規作成</h3>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        開発者ダッシュボード上部の <strong>「マイアプリ」</strong> メニューをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「アプリを作成」</strong> ボタンをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>ユースケースの選択</strong>画面が表示されます。一覧から <strong>「その他」</strong>（Other）を選択し、「次へ」をクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>アプリタイプの選択</strong>画面で <strong>「ビジネス」</strong>（Business）を選択し、「次へ」をクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>アプリ名</strong>を入力します（例: 「My Threads App」「Threads管理ツール」など、わかりやすい名前でOKです）。<strong>連絡先メールアドレス</strong>が自動入力されていることを確認して、<strong>「アプリを作成」</strong>をクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        Facebookパスワードの再入力を求められる場合があります。入力して確認すると、アプリダッシュボードが表示されます。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：アプリ作成画面 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">developers.facebook.com/apps/create/</span>
+    </div>
+    <div class="mock-meta-nav">
+      <span>Meta for Developers</span>
+      <span style="margin-left: auto; font-weight: 400; font-size: 0.75rem;">マイアプリ &#9662;</span>
+    </div>
+    <div class="mock-meta-content">
+      <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 16px;">アプリを作成</div>
+      <div class="mock-form-group">
+        <div class="mock-label">ユースケースを選択してください</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <div class="mock-card" style="flex: 1; min-width: 140px; padding: 12px; text-align: center; opacity: 0.5;">
+            <div style="font-size: 0.8rem; font-weight: 600;">Facebookログイン</div>
+          </div>
+          <div class="mock-card" style="flex: 1; min-width: 140px; padding: 12px; text-align: center; opacity: 0.5;">
+            <div style="font-size: 0.8rem; font-weight: 600;">Instagram API</div>
+          </div>
+          <div class="mock-card" style="flex: 1; min-width: 140px; padding: 12px; text-align: center; border: 2px solid var(--primary);">
+            <div style="font-size: 0.8rem; font-weight: 600; color: var(--primary);">その他 &#10003;</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; text-align: right;">
+        <span class="mock-btn mock-btn-meta">次へ</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>App IDとApp Secretの確認方法</h3>
+  <p>アプリ作成後、<strong>App ID</strong>と<strong>App Secret</strong>をメモしておきます。これらはThreads Studio Labへの連携時に必要です。</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        アプリダッシュボードの左メニューから <strong>「設定」→「ベーシック」</strong> を選択します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>アプリID</strong>（App ID）がページ上部に表示されます。数字の羅列（例: <code>123456789012345</code>）です。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>app secret</strong> 欄の横にある <strong>「表示」</strong> ボタンをクリックすると、App Secretが表示されます。Facebookパスワードの入力を求められる場合があります。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：App IDの確認 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">developers.facebook.com/apps/123456789/settings/basic/</span>
+    </div>
+    <div class="mock-body" style="padding: 16px;">
+      <div style="font-size: 1rem; font-weight: 700; margin-bottom: 16px;">ベーシック設定</div>
+      <div class="mock-form-group">
+        <div class="mock-label">アプリID</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="mock-input" style="width: auto; flex: 1; background: #fef3c7; border-color: #f59e0b; font-weight: 600;">123456789012345</div>
+          <span class="mock-badge mock-badge-yellow">必ずメモ</span>
+        </div>
+      </div>
+      <div class="mock-form-group">
+        <div class="mock-label">app secret</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="mock-input" style="width: auto; flex: 1; background: #fef3c7; border-color: #f59e0b;">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</div>
+          <span class="mock-btn mock-btn-outline" style="font-size: 0.75rem; padding: 6px 12px;">表示</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box danger">
+    <div class="box-icon">!</div>
+    <div><strong>警告:</strong> <strong>App Secret</strong>は絶対に他人と共有しないでください。漏洩するとセキュリティ上のリスクがあります。安全な場所（パスワードマネージャー等）に保管してください。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 4: Threads APIの有効化 ==================== -->
+<section class="section" id="section-4">
+  <div class="section-header">
+    <div class="section-num">4</div>
+    <h2 class="section-title">Threads APIの有効化</h2>
+  </div>
+
+  <p>作成したMeta AppにThreads APIの機能を追加します。</p>
+
+  <h3>Threads API製品の追加</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        アプリダッシュボードで、左メニューまたは画面中央の <strong>「製品を追加」</strong>（Add Product）セクションを見つけます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        製品一覧から <strong>「Threads API」</strong> を探し、<strong>「設定」</strong>（Set Up）ボタンをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        左メニューに「Threads API」のセクションが追加されたことを確認します。これでThreads APIの有効化は完了です。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：製品追加 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">developers.facebook.com/apps/123456789/dashboard/</span>
+    </div>
+    <div class="mock-body">
+      <div style="font-size: 1rem; font-weight: 700; margin-bottom: 16px;">製品を追加</div>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div class="mock-card" style="flex: 1; min-width: 160px; text-align: center;">
+          <div style="width: 40px; height: 40px; border-radius: 8px; background: #1877f2; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">f</div>
+          <div style="font-size: 0.8rem; font-weight: 600;">Facebookログイン</div>
+          <div style="margin-top: 8px;"><span class="mock-btn mock-btn-outline" style="font-size: 0.7rem; padding: 4px 12px;">設定</span></div>
+        </div>
+        <div class="mock-card" style="flex: 1; min-width: 160px; text-align: center; border: 2px solid var(--primary);">
+          <div style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, var(--primary), #c084fc); margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem;">@</div>
+          <div style="font-size: 0.8rem; font-weight: 600; color: var(--primary);">Threads API</div>
+          <div style="margin-top: 8px;"><span class="mock-btn mock-btn-primary" style="font-size: 0.7rem; padding: 4px 12px;">設定 &#10003;</span></div>
+        </div>
+        <div class="mock-card" style="flex: 1; min-width: 160px; text-align: center;">
+          <div style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #f59e0b, #ef4444); margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700;">IG</div>
+          <div style="font-size: 0.8rem; font-weight: 600;">Instagram API</div>
+          <div style="margin-top: 8px;"><span class="mock-btn mock-btn-outline" style="font-size: 0.7rem; padding: 4px 12px;">設定</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>スコープ（権限）の説明</h3>
+  <p>Threads APIには4つのスコープ（権限）があります。Threads Studio Labの全機能を使うには、すべてのスコープを有効にすることを推奨します。</p>
+
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr><th>スコープ名</th><th>必須/推奨</th><th>できること</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>threads_basic</code></td>
+          <td><span class="mock-badge mock-badge-red">必須</span></td>
+          <td>ユーザープロフィール情報の取得、自分の投稿一覧の取得</td>
+        </tr>
+        <tr>
+          <td><code>threads_content_publish</code></td>
+          <td><span class="mock-badge mock-badge-red">必須</span></td>
+          <td>新しい投稿の作成、スレッド（複数連続投稿）の作成</td>
+        </tr>
+        <tr>
+          <td><code>threads_manage_insights</code></td>
+          <td><span class="mock-badge mock-badge-yellow">推奨</span></td>
+          <td>投稿ごとのインサイト（いいね数、リプライ数、インプレッション数等）の取得</td>
+        </tr>
+        <tr>
+          <td><code>threads_manage_replies</code></td>
+          <td><span class="mock-badge mock-badge-yellow">推奨</span></td>
+          <td>リプライの管理（リプライの非表示、返信の取得等）</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box tip">
+    <div class="box-icon">&#10003;</div>
+    <div><strong>ヒント:</strong> スコープは後から追加することも可能です。最初は<code>threads_basic</code>と<code>threads_content_publish</code>だけで始めて、分析機能が必要になったら<code>threads_manage_insights</code>を追加する、という方法もあります。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 5: Threadsテスターの追加 ==================== -->
+<section class="section" id="section-5">
+  <div class="section-header">
+    <div class="section-num">5</div>
+    <h2 class="section-title">Threadsテスターの追加</h2>
+  </div>
+
+  <p>開発モードのアプリでThreads APIを使うには、自分のThreadsアカウントを「テスター」として登録する必要があります。</p>
+
+  <h3>テスターの追加手順</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        アプリダッシュボードの左メニューから <strong>「アプリの役割」→「役割」</strong> を選択します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「Threadsテスター」</strong>セクションを見つけ、<strong>「ユーザーを追加」</strong> ボタンをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>Threadsのユーザー名</strong>（@なし）を入力し、<strong>「追加」</strong> をクリックします。<br>
+        例: ユーザー名が <code>@mythreads_account</code> の場合、<code>mythreads_account</code> と入力します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        招待が送信されます。次のステップで、Threads側から招待を承認します。
+      </div>
+    </div>
+  </div>
+
+  <h3>Threads側での招待承認</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        スマートフォンで <strong>Threadsアプリ</strong> を開きます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「設定」→「アカウント」→「Webサイトのアクセス許可」→「招待」</strong> の順にタップします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        先ほど送信した招待が表示されるので、<strong>「承認」</strong> をタップします。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：役割設定 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">developers.facebook.com/apps/123456789/roles/</span>
+    </div>
+    <div class="mock-body">
+      <div style="font-size: 1rem; font-weight: 700; margin-bottom: 16px;">アプリの役割</div>
+      <div class="mock-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div style="font-size: 0.9rem; font-weight: 600;">Threadsテスター</div>
+          <span class="mock-btn mock-btn-primary" style="font-size: 0.7rem; padding: 4px 12px;">ユーザーを追加</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--primary-50); border-radius: 6px;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; color: white; font-size: 0.8rem; font-weight: 700;">M</div>
+          <div>
+            <div style="font-size: 0.8rem; font-weight: 600;">mythreads_account</div>
+            <div style="font-size: 0.7rem; color: var(--text-light);">承認待ち</div>
+          </div>
+          <span class="mock-badge mock-badge-yellow" style="margin-left: auto;">Pending</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>開発モードとライブモードの違い</h3>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>項目</th><th>開発モード</th><th>ライブモード</th></tr></thead>
+      <tbody>
+        <tr><td>利用可能ユーザー</td><td>テスターとして追加されたユーザーのみ</td><td>すべてのユーザー</td></tr>
+        <tr><td>審査</td><td>不要</td><td>Metaによるアプリ審査が必要</td></tr>
+        <tr><td>個人利用</td><td><span style="color: var(--success); font-weight: 700;">&#10003; 十分</span></td><td>不要（個人利用なら開発モードで可）</td></tr>
+        <tr><td>API制限</td><td>同等</td><td>同等</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box note">
+    <div class="box-icon">i</div>
+    <div><strong>メモ:</strong> 個人利用の場合は開発モードのままで問題ありません。自分のアカウントをテスターに追加するだけで、すべてのAPI機能を利用できます。</div>
+  </div>
+
+  <h3>よくあるエラー</h3>
+  <div class="faq-item">
+    <div class="faq-q">「ユーザーが見つかりません」と表示される</div>
+    <div class="faq-a">Threadsのユーザー名が正しいか確認してください。@マークは不要です。また、Threadsアカウントが<strong>公開設定</strong>になっているか確認してください。</div>
+  </div>
+  <div class="faq-item">
+    <div class="faq-q">Threads側に招待が表示されない</div>
+    <div class="faq-a">Threadsアプリを最新バージョンに更新してください。また、数分待ってからもう一度確認してみてください。招待の反映に時間がかかる場合があります。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 6: アクセストークンの取得 ==================== -->
+<section class="section" id="section-6">
+  <div class="section-header">
+    <div class="section-num">6</div>
+    <h2 class="section-title">アクセストークンの取得</h2>
+  </div>
+
+  <p>Threads APIを利用するには「アクセストークン」が必要です。アクセストークンは、あなたのThreadsアカウントに対する操作権限を証明するキーです。</p>
+
+  <h3>方法: Graph API Explorer を使う（推奨）</h3>
+
+  <div class="url-block">
+    <span class="url-icon">&#128279;</span>
+    <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">https://developers.facebook.com/tools/explorer/</a>
+    <button class="copy-btn" onclick="copyText('https://developers.facebook.com/tools/explorer/')">コピー</button>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        上記URLにアクセスし、<strong>Graph API Explorer</strong>を開きます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        右上の <strong>「Meta App」ドロップダウン</strong>から、セクション3で作成した自分のアプリを選択します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「ユーザーまたはページ」</strong> ドロップダウンで <strong>「ユーザートークン」</strong> を選択します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「アクセス許可を追加」</strong>（Add Permissions）をクリックし、以下の4つのスコープにすべてチェックを入れます:
+        <ul style="margin-top: 8px; padding-left: 20px;">
+          <li><code>threads_basic</code></li>
+          <li><code>threads_content_publish</code></li>
+          <li><code>threads_manage_insights</code></li>
+          <li><code>threads_manage_replies</code></li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「Generate Access Token」</strong>（アクセストークンを生成）ボタンをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        Threadsへのアクセス許可画面が表示されます。内容を確認し、<strong>「許可する」</strong> をクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        画面上部のテキストボックスに<strong>アクセストークン</strong>（長い英数字の文字列）が表示されます。これをコピーして安全な場所に保存してください。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：Graph API Explorer -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">developers.facebook.com/tools/explorer/</span>
+    </div>
+    <div class="mock-body" style="padding: 12px;">
+      <div style="font-size: 0.9rem; font-weight: 700; margin-bottom: 12px;">Graph API Explorer</div>
+      <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+        <div>
+          <div class="mock-label">Meta App</div>
+          <div class="mock-input" style="min-width: 160px;">My Threads App &#9662;</div>
+        </div>
+        <div>
+          <div class="mock-label">ユーザーまたはページ</div>
+          <div class="mock-input" style="min-width: 160px;">ユーザートークン &#9662;</div>
+        </div>
+      </div>
+      <div class="mock-label">アクセス許可</div>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+        <span class="mock-badge mock-badge-purple">&#10003; threads_basic</span>
+        <span class="mock-badge mock-badge-purple">&#10003; threads_content_publish</span>
+        <span class="mock-badge mock-badge-purple">&#10003; threads_manage_insights</span>
+        <span class="mock-badge mock-badge-purple">&#10003; threads_manage_replies</span>
+      </div>
+      <div style="margin-bottom: 12px;">
+        <span class="mock-btn mock-btn-meta">Generate Access Token</span>
+      </div>
+      <div class="mock-label">アクセストークン</div>
+      <div class="mock-input" style="font-family: monospace; font-size: 0.75rem; background: #fef3c7; border-color: #f59e0b;">EAAxxxxxxxxxxxxxxx...（長い文字列）</div>
+    </div>
+  </div>
+
+  <h3>短期トークンと長期トークンの違い</h3>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>種類</th><th>有効期限</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>短期トークン</strong></td>
+          <td>約1時間</td>
+          <td>Graph API Explorerで生成された直後のトークン。テスト用</td>
+        </tr>
+        <tr>
+          <td><strong>長期トークン</strong></td>
+          <td>約60日</td>
+          <td>継続的な利用向け。Threads Studio Labではこちらを使用</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box warn">
+    <div class="box-icon">!</div>
+    <div><strong>注意:</strong> Graph API Explorerで生成されるトークンは<strong>短期トークン（約1時間）</strong>です。そのままでは1時間後に使えなくなります。次のステップで長期トークンに変換するか、Threads Studio Labの自動変換機能を使用してください。</div>
+  </div>
+
+  <h3>長期トークンへの変換方法</h3>
+  <p>Threads Studio Labにはトークン変換ツールが内蔵されています。アカウント連携画面で短期トークンを入力すると、自動的に長期トークンへの変換が行われます（App IDとApp Secretが必要）。</p>
+  <p>手動で変換する場合は、以下のAPIエンドポイントを使用します:</p>
+
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyText(this.parentElement.querySelector('code').textContent)">コピー</button>
+    <code>GET https://graph.threads.net/access_token
+  ?grant_type=th_exchange_token
+  &client_secret={App Secret}
+  &access_token={短期トークン}</code>
+  </div>
+
+  <div class="box tip">
+    <div class="box-icon">&#10003;</div>
+    <div><strong>ヒント:</strong> Threads Studio Labのアカウント連携画面にApp IDとApp Secretを入力しておけば、短期トークンを入力するだけで自動的に長期トークンに変換されます。手動変換は不要です。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 7: Threads Studio Labへのアカウント登録 ==================== -->
+<section class="section" id="section-7">
+  <div class="section-header">
+    <div class="section-num">7</div>
+    <h2 class="section-title">Threads Studio Labへのアカウント登録</h2>
+  </div>
+
+  <p>ここまでの準備が整ったら、Threads Studio Labにアカウントを作成してログインします。</p>
+
+  <h3>サイトにアクセス</h3>
+
+  <div class="url-block">
+    <span class="url-icon">&#128279;</span>
+    <a href="https://threads-analytics-eight.vercel.app" target="_blank" rel="noopener">https://threads-analytics-eight.vercel.app</a>
+    <button class="copy-btn" onclick="copyText('https://threads-analytics-eight.vercel.app')">コピー</button>
+  </div>
+
+  <h3>アカウント作成</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        トップページの <strong>「無料で始める」</strong> ボタンをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        アカウント作成方法を選択します:
+        <ul style="margin-top: 8px; padding-left: 20px;">
+          <li><strong>メール + パスワード:</strong> メールアドレスとパスワードを入力して登録</li>
+          <li><strong>Google OAuth:</strong> 「Googleでログイン」ボタンでGoogleアカウントを使用して登録</li>
+        </ul>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        登録が完了すると、自動的にダッシュボード画面に遷移します。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：登録画面 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">threads-analytics-eight.vercel.app/register</span>
+    </div>
+    <div class="mock-tsl-header">
+      <span>Threads Studio Lab</span>
+    </div>
+    <div class="mock-body" style="display: flex; justify-content: center; padding: 32px;">
+      <div style="width: 320px;">
+        <div style="text-align: center; font-size: 1.2rem; font-weight: 700; margin-bottom: 4px;">アカウント作成</div>
+        <div style="text-align: center; font-size: 0.8rem; color: var(--text-light); margin-bottom: 20px;">無料で始めましょう</div>
+        <div class="mock-form-group">
+          <div class="mock-label">メールアドレス</div>
+          <div class="mock-input">your@email.com</div>
+        </div>
+        <div class="mock-form-group">
+          <div class="mock-label">パスワード</div>
+          <div class="mock-input">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</div>
+        </div>
+        <div style="margin-top: 16px;">
+          <div class="mock-btn mock-btn-primary" style="display: block; text-align: center; width: 100%;">アカウント作成</div>
+        </div>
+        <div style="text-align: center; margin: 16px 0; font-size: 0.8rem; color: var(--text-light);">または</div>
+        <div class="mock-btn mock-btn-outline" style="display: block; text-align: center; width: 100%;">
+          <span style="font-weight: 700;">G</span> &nbsp;Googleでログイン
+        </div>
+        <div style="text-align: center; margin-top: 16px; font-size: 0.8rem;">
+          すでにアカウントをお持ちの方は <span style="color: var(--primary);">ログイン</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== セクション 8: Threadsアカウントの連携 ==================== -->
+<section class="section" id="section-8">
+  <div class="section-header">
+    <div class="section-num">8</div>
+    <h2 class="section-title">Threadsアカウントの連携</h2>
+  </div>
+
+  <p>Threads Studio Labにログインしたら、自分のThreadsアカウントを連携させます。ここで、セクション3で取得したApp ID・App Secret、セクション6で取得したアクセストークンを使用します。</p>
+
+  <h3>連携手順</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        ダッシュボード画面で <strong>「アカウントを追加」</strong> ボタンをクリックします。アカウント連携モーダルが表示されます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        以下の3つの情報を入力します:
+        <div class="mock-form-group">
+          <div class="mock-label" style="margin-top: 12px;">App ID</div>
+          <div class="mock-input">123456789012345</div>
+          <div class="mock-label">App Secret</div>
+          <div class="mock-input">abcdef1234567890abcdef...</div>
+          <div class="mock-label">アクセストークン</div>
+          <div class="mock-input">EAAxxxxxxxxxxxxxxx...</div>
+        </div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「連携する」</strong> ボタンをクリックします。短期トークンの場合は自動的に長期トークンに変換されます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        連携が成功すると、Threadsのユーザー名とプロフィール画像がダッシュボードに表示されます。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：アカウント連携 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">threads-analytics-eight.vercel.app</span>
+    </div>
+    <div class="mock-tsl-header">
+      <span>Threads Studio Lab</span>
+      <span style="font-size: 0.75rem; font-weight: 400;">user@example.com</span>
+    </div>
+    <div class="mock-body" style="display: flex; justify-content: center; padding: 24px;">
+      <div class="mock-card" style="width: 380px; padding: 24px;">
+        <div style="font-size: 1rem; font-weight: 700; margin-bottom: 4px; text-align: center;">Threadsアカウントを連携</div>
+        <div style="font-size: 0.8rem; color: var(--text-light); margin-bottom: 16px; text-align: center;">Meta開発者ダッシュボードで取得した情報を入力してください</div>
+        <div class="mock-form-group">
+          <div class="mock-label">App ID</div>
+          <div class="mock-input">123456789012345</div>
+        </div>
+        <div class="mock-form-group">
+          <div class="mock-label">App Secret</div>
+          <div class="mock-input" style="font-family: monospace;">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</div>
+        </div>
+        <div class="mock-form-group">
+          <div class="mock-label">アクセストークン</div>
+          <div class="mock-input" style="font-family: monospace;">EAAxxxxxxxxxxxxxxxxxxxxxxx...</div>
+        </div>
+        <div style="margin-top: 16px;">
+          <div class="mock-btn mock-btn-primary" style="display: block; text-align: center; width: 100%;">連携する</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>連携成功の確認</h3>
+  <p>連携が成功すると、ダッシュボードのアカウント欄にThreadsアカウント情報が表示されます。</p>
+
+  <div class="mock-card" style="display: flex; align-items: center; gap: 12px; padding: 16px;">
+    <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem;">M</div>
+    <div>
+      <div style="font-weight: 600;">@mythreads_account</div>
+      <div style="font-size: 0.8rem; color: var(--text-light);">Threadsテスター</div>
+    </div>
+    <span class="mock-badge mock-badge-green" style="margin-left: auto;">連携済み</span>
+  </div>
+
+  <h3>複数アカウントの管理</h3>
+  <p>Standard / Proプランでは、複数のThreadsアカウントを追加できます。追加する場合は、それぞれのアカウントに対応するアクセストークンが必要です。ダッシュボード上部のアカウント切り替えドロップダウンで、管理するアカウントを切り替えることができます。</p>
+
+  <div class="box note">
+    <div class="box-icon">i</div>
+    <div><strong>メモ:</strong> Freeプランでは連携できるThreadsアカウントは1つまでです。複数アカウントを管理したい場合はプランのアップグレードをご検討ください。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 9: ダッシュボードの使い方 ==================== -->
+<section class="section" id="section-9">
+  <div class="section-header">
+    <div class="section-num">9</div>
+    <h2 class="section-title">ダッシュボードの使い方</h2>
+  </div>
+
+  <p>Threadsアカウントの連携が完了したら、ダッシュボードを使って投稿管理と分析を行いましょう。</p>
+
+  <!-- UIモック：ダッシュボード全体 -->
+  <div class="mock-browser">
+    <div class="mock-browser-bar">
+      <span class="mock-dot red"></span>
+      <span class="mock-dot yellow"></span>
+      <span class="mock-dot green"></span>
+      <span class="mock-address">threads-analytics-eight.vercel.app</span>
+    </div>
+    <div class="mock-tsl-header">
+      <span>Threads Studio Lab</span>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 0.75rem;">@mythreads_account &#9662;</span>
+        <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--accent);"></div>
+      </div>
+    </div>
+    <div class="mock-tsl-body">
+      <div class="mock-tsl-sidebar">
+        <div class="mock-tsl-sidebar-item active">概要</div>
+        <div class="mock-tsl-sidebar-item">投稿作成</div>
+        <div class="mock-tsl-sidebar-item">予約投稿</div>
+        <div class="mock-tsl-sidebar-item">下書き</div>
+        <div class="mock-tsl-sidebar-item">テンプレート</div>
+        <div class="mock-tsl-sidebar-item">分析</div>
+        <div class="mock-tsl-sidebar-item">設定</div>
+      </div>
+      <div class="mock-tsl-main">
+        <div style="font-size: 0.9rem; font-weight: 700; margin-bottom: 12px;">ダッシュボード概要</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
+          <div class="mock-kpi">
+            <div class="mock-kpi-value">1,234</div>
+            <div class="mock-kpi-label">フォロワー</div>
+          </div>
+          <div class="mock-kpi">
+            <div class="mock-kpi-value">56</div>
+            <div class="mock-kpi-label">投稿数（今月）</div>
+          </div>
+          <div class="mock-kpi">
+            <div class="mock-kpi-value">4.2%</div>
+            <div class="mock-kpi-label">エンゲージメント率</div>
+          </div>
+          <div class="mock-kpi">
+            <div class="mock-kpi-value">892</div>
+            <div class="mock-kpi-label">合計いいね</div>
+          </div>
+        </div>
+        <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 8px;">エンゲージメント推移</div>
+        <div class="mock-chart">
+          <div class="mock-bar" style="height: 40%;"><span class="mock-bar-label">月</span></div>
+          <div class="mock-bar" style="height: 65%;"><span class="mock-bar-label">火</span></div>
+          <div class="mock-bar" style="height: 45%;"><span class="mock-bar-label">水</span></div>
+          <div class="mock-bar" style="height: 80%;"><span class="mock-bar-label">木</span></div>
+          <div class="mock-bar" style="height: 55%;"><span class="mock-bar-label">金</span></div>
+          <div class="mock-bar" style="height: 90%;"><span class="mock-bar-label">土</span></div>
+          <div class="mock-bar" style="height: 70%;"><span class="mock-bar-label">日</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>概要タブ</h3>
+  <p>ログイン直後に表示されるメイン画面です。以下の情報が一覧表示されます:</p>
+  <ul style="padding-left: 24px; margin-bottom: 16px;">
+    <li><strong>KPIカード:</strong> フォロワー数、投稿数、エンゲージメント率、いいね・リプライの合計などの主要指標</li>
+    <li><strong>エンゲージメント推移グラフ:</strong> 過去の投稿パフォーマンスの推移をチャートで可視化</li>
+    <li><strong>トップ投稿:</strong> 最もパフォーマンスの高かった投稿のランキング</li>
+  </ul>
+
+  <h3>投稿作成</h3>
+  <p>新しい投稿を作成してThreadsに投稿します。</p>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        投稿作成エリアにテキストを入力します。500文字まで入力可能です。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>スレッド投稿</strong>（複数の投稿を連結）を作りたい場合は、<strong>「スレッドを追加」</strong>ボタンで投稿を追加できます。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「今すぐ投稿」</strong>ボタンでThreadsに即座に投稿されます。
+      </div>
+    </div>
+  </div>
+
+  <!-- UIモック：投稿作成 -->
+  <div class="mock-card" style="margin: 16px 0;">
+    <div style="font-size: 0.9rem; font-weight: 700; margin-bottom: 12px;">新しい投稿を作成</div>
+    <div style="border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-height: 80px; font-size: 0.85rem; color: var(--text-light); margin-bottom: 12px;">
+      投稿テキストを入力してください...<br><br>
+      <span style="font-size: 0.75rem;">0 / 500</span>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div style="display: flex; gap: 8px;">
+        <span class="mock-btn mock-btn-outline" style="font-size: 0.75rem; padding: 6px 12px;">+ スレッドを追加</span>
+        <span class="mock-btn mock-btn-outline" style="font-size: 0.75rem; padding: 6px 12px;">画像添付</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <span class="mock-btn mock-btn-outline" style="font-size: 0.75rem; padding: 6px 12px;">下書き保存</span>
+        <span class="mock-btn mock-btn-primary" style="font-size: 0.75rem; padding: 6px 12px;">今すぐ投稿</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>予約投稿の作り方</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        投稿テキストを入力した後、<strong>「今すぐ投稿」</strong>の代わりに<strong>予約投稿機能</strong>を使用します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>日時を指定</strong>します。カレンダーUIから日付を選択し、時刻を入力します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>「予約する」</strong>ボタンをクリックすると、指定した日時にThreadsへ自動投稿されます。
+      </div>
+    </div>
+  </div>
+
+  <div class="box tip">
+    <div class="box-icon">&#10003;</div>
+    <div><strong>ヒント:</strong> 予約投稿はカレンダー表示で一覧管理できます。視覚的に投稿スケジュールを把握できるので、コンテンツ計画に活用してください。</div>
+  </div>
+
+  <h3>下書き・テンプレート</h3>
+  <p><strong>下書き:</strong> 投稿テキストを作成途中で保存できます。後から編集して投稿できます。</p>
+  <p><strong>テンプレート:</strong> よく使う投稿の型（例: 「おはようございます！今日の一言: {message}」）をテンプレートとして保存し、再利用できます。変数（{変数名}）を使えば、テンプレートの一部を投稿時に変えることもできます。</p>
+
+  <h3>分析タブ</h3>
+  <p>投稿のパフォーマンスを詳しく分析できます。</p>
+  <ul style="padding-left: 24px; margin-bottom: 16px;">
+    <li><strong>投稿時間分析:</strong> どの時間帯に投稿するとエンゲージメントが高いか</li>
+    <li><strong>コンテンツ分析:</strong> テキストの長さ、ハッシュタグの有無による効果の違い</li>
+    <li><strong>キーワード分析:</strong> 投稿内のキーワードとエンゲージメントの相関</li>
+    <li><strong>トップ投稿一覧:</strong> 期間を指定して高パフォーマンスの投稿を確認</li>
+  </ul>
+
+  <h3>CSVインポート / エクスポート</h3>
+  <p>投稿データをCSVファイルで一括管理できます。</p>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>機能</th><th>説明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>CSVエクスポート</strong></td><td>投稿一覧や分析データをCSVファイルとしてダウンロード。Excelやスプレッドシートで分析可能</td></tr>
+        <tr><td><strong>CSVインポート</strong></td><td>CSVファイルから予約投稿を一括登録。大量の投稿を効率的にスケジューリング</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box note">
+    <div class="box-icon">i</div>
+    <div><strong>メモ:</strong> CSVインポート時のスレッド投稿は、テキストカラムで <code>|||</code> を区切り文字として使用します。例: <code>1つ目の投稿|||2つ目の投稿|||3つ目の投稿</code></div>
+  </div>
+</section>
+
+<!-- ==================== セクション 10: トラブルシューティング ==================== -->
+<section class="section" id="section-10">
+  <div class="section-header">
+    <div class="section-num">10</div>
+    <h2 class="section-title">トラブルシューティング</h2>
+  </div>
+
+  <p>利用中に問題が発生した場合の対処方法をまとめています。</p>
+
+  <h3>よくある問題と解決方法</h3>
+
+  <h4>「アクセストークンが無効または期限切れです」</h4>
+  <p>最も頻繁に発生する問題です。アクセストークンには有効期限があります。</p>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        <a href="#section-6">セクション6</a>の手順に従い、Graph API Explorerで新しいアクセストークンを生成します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        Threads Studio Labのダッシュボードで、アカウント設定からアクセストークンを更新します。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        更新後、「接続テスト」ボタンでトークンが有効であることを確認します。
+      </div>
+    </div>
+  </div>
+
+  <h4>「データの取得に失敗しました」</h4>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        <strong>ネットワーク接続</strong>を確認します。Wi-Fiまたはモバイルデータがオンになっているか確認してください。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        <strong>API制限（レートリミット）</strong>に達していないか確認します。短時間に多くのリクエストを送ると一時的に制限されます。数分待ってから再試行してください。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        それでも解決しない場合は、一度ログアウトして再度ログインしてください。
+      </div>
+    </div>
+  </div>
+
+  <h4>トークンの更新方法（60日ごと）</h4>
+  <p>長期トークンの有効期限は<strong>約60日</strong>です。期限が近づくと、ダッシュボードに警告が表示されます。</p>
+
+  <div class="flow">
+    <div class="flow-item">期限通知を確認</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item">Graph API Explorerで再取得</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item active">TSLで更新</div>
+  </div>
+
+  <h4>ブラウザキャッシュのクリア方法</h4>
+  <p>画面表示がおかしい場合は、ブラウザのキャッシュをクリアしてみてください。</p>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>ブラウザ</th><th>ショートカットキー</th><th>手順</th></tr></thead>
+      <tbody>
+        <tr><td>Chrome</td><td><code>Ctrl + Shift + Delete</code></td><td>設定 → プライバシーとセキュリティ → 閲覧データの削除</td></tr>
+        <tr><td>Safari</td><td><code>Cmd + Option + E</code></td><td>Safari → 設定 → 詳細 → キャッシュを空にする</td></tr>
+        <tr><td>Firefox</td><td><code>Ctrl + Shift + Delete</code></td><td>設定 → プライバシーとセキュリティ → Cookie とサイトデータ → データを消去</td></tr>
+        <tr><td>Edge</td><td><code>Ctrl + Shift + Delete</code></td><td>設定 → プライバシー → 閲覧データのクリア</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>エラーコードと対処法</h3>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>エラーコード</th><th>メッセージ</th><th>原因</th><th>対処法</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="error-code">190</span></td>
+          <td>Invalid OAuth access token</td>
+          <td>トークンが無効または期限切れ</td>
+          <td>新しいアクセストークンを生成して更新</td>
+        </tr>
+        <tr>
+          <td><span class="error-code">4</span></td>
+          <td>Application request limit reached</td>
+          <td>API呼び出し回数の上限に到達</td>
+          <td>数分〜1時間待ってから再試行</td>
+        </tr>
+        <tr>
+          <td><span class="error-code">10</span></td>
+          <td>Permission denied</td>
+          <td>必要なスコープ（権限）が不足</td>
+          <td>Graph API Explorerで必要なスコープを追加してトークンを再生成</td>
+        </tr>
+        <tr>
+          <td><span class="error-code">100</span></td>
+          <td>Invalid parameter</td>
+          <td>APIリクエストのパラメータが不正</td>
+          <td>投稿テキストが空、または文字数制限超過を確認</td>
+        </tr>
+        <tr>
+          <td><span class="error-code">368</span></td>
+          <td>Temporarily blocked for policies</td>
+          <td>スパム判定など、一時的なブロック</td>
+          <td>数時間〜24時間待ってから再試行。投稿内容を見直す</td>
+        </tr>
+        <tr>
+          <td><span class="error-code">2207026</span></td>
+          <td>Media upload error</td>
+          <td>メディアのアップロードに失敗</td>
+          <td>ファイル形式（JPEG/PNG/MP4）とサイズを確認</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box warn">
+    <div class="box-icon">!</div>
+    <div><strong>注意:</strong> 上記で解決しない問題が発生した場合は、<a href="https://developers.facebook.com/support/" target="_blank" rel="noopener">Meta開発者サポート</a>に問い合わせるか、<a href="https://developers.facebook.com/community/" target="_blank" rel="noopener">Metaコミュニティフォーラム</a>で検索してみてください。</div>
+  </div>
+</section>
+
+<!-- ==================== セクション 11: 料金プラン ==================== -->
+<section class="section" id="section-11">
+  <div class="section-header">
+    <div class="section-num">11</div>
+    <h2 class="section-title">料金プラン</h2>
+  </div>
+
+  <p>Threads Studio Labは、Free / Standard / Pro の3つのプランをご用意しています。</p>
+
+  <div class="plans-container">
+    <!-- Freeプラン -->
+    <div class="plan-card">
+      <div class="plan-name">Free</div>
+      <div style="font-size: 0.85rem; color: var(--text-light);">まずは試してみたい方に</div>
+      <div class="plan-price">&#165;0<span> / 月</span></div>
+      <ul class="plan-features">
+        <li><span class="plan-check">&#10003;</span> Threadsアカウント連携 1つ</li>
+        <li><span class="plan-check">&#10003;</span> 投稿作成・スレッド投稿</li>
+        <li><span class="plan-check">&#10003;</span> 基本的な分析</li>
+        <li><span class="plan-check">&#10003;</span> 下書き保存（5件まで）</li>
+        <li><span class="plan-check">&#10003;</span> 予約投稿（5件まで）</li>
+        <li><span class="plan-cross">&#8212;</span> テンプレート</li>
+        <li><span class="plan-cross">&#8212;</span> CSVインポート / エクスポート</li>
+        <li><span class="plan-cross">&#8212;</span> AI機能</li>
+        <li><span class="plan-cross">&#8212;</span> 自動返信</li>
+      </ul>
+    </div>
+
+    <!-- Standardプラン -->
+    <div class="plan-card recommended">
+      <div class="plan-name">Standard</div>
+      <div style="font-size: 0.85rem; color: var(--text-light);">本格的に運用する方に</div>
+      <div class="plan-price">&#165;980<span> / 月</span></div>
+      <ul class="plan-features">
+        <li><span class="plan-check">&#10003;</span> Threadsアカウント連携 3つ</li>
+        <li><span class="plan-check">&#10003;</span> 投稿作成・スレッド投稿</li>
+        <li><span class="plan-check">&#10003;</span> 詳細な分析・レポート</li>
+        <li><span class="plan-check">&#10003;</span> 下書き保存（無制限）</li>
+        <li><span class="plan-check">&#10003;</span> 予約投稿（無制限）</li>
+        <li><span class="plan-check">&#10003;</span> テンプレート管理</li>
+        <li><span class="plan-check">&#10003;</span> CSVインポート / エクスポート</li>
+        <li><span class="plan-cross">&#8212;</span> AI機能</li>
+        <li><span class="plan-cross">&#8212;</span> 自動返信</li>
+      </ul>
+    </div>
+
+    <!-- Proプラン -->
+    <div class="plan-card">
+      <div class="plan-name">Pro</div>
+      <div style="font-size: 0.85rem; color: var(--text-light);">全機能をフル活用したい方に</div>
+      <div class="plan-price">&#165;2,980<span> / 月</span></div>
+      <ul class="plan-features">
+        <li><span class="plan-check">&#10003;</span> Threadsアカウント連携 10つ</li>
+        <li><span class="plan-check">&#10003;</span> 投稿作成・スレッド投稿</li>
+        <li><span class="plan-check">&#10003;</span> 詳細な分析・レポート</li>
+        <li><span class="plan-check">&#10003;</span> 下書き保存（無制限）</li>
+        <li><span class="plan-check">&#10003;</span> 予約投稿（無制限）</li>
+        <li><span class="plan-check">&#10003;</span> テンプレート管理</li>
+        <li><span class="plan-check">&#10003;</span> CSVインポート / エクスポート</li>
+        <li><span class="plan-check">&#10003;</span> AI投稿アシスタント</li>
+        <li><span class="plan-check">&#10003;</span> 自動返信ルール</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>アップグレード方法</h3>
+  <div class="steps">
+    <div class="step">
+      <div class="step-content">
+        ダッシュボードの <strong>「設定」</strong> または <strong>「料金プラン」</strong> ページにアクセスします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        希望のプランの <strong>「アップグレード」</strong> ボタンをクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        Stripeの安全な決済画面でクレジットカード情報を入力し、<strong>「購読する」</strong> をクリックします。
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-content">
+        決済完了後、即座にプランが反映されます。追加機能がすぐに利用可能になります。
+      </div>
+    </div>
+  </div>
+
+  <div class="box tip">
+    <div class="box-icon">&#10003;</div>
+    <div><strong>ヒント:</strong> プランの変更はいつでも可能です。ダウングレードする場合は、次の請求サイクルの開始時に反映されます。</div>
+  </div>
+</section>
+
+<!-- ===== 全体のまとめ ===== -->
+<section class="section" style="text-align: center; padding: 40px 0; border-top: 2px solid var(--primary-light);">
+  <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 12px; color: var(--primary-dark);">セットアップ完了！</div>
+  <p style="max-width: 500px; margin: 0 auto 24px; color: var(--text-light);">
+    お疲れ様でした。これでThreads Studio Labの準備は完了です。<br>
+    さっそくThreadsの投稿管理と分析を始めましょう。
+  </p>
+  <div class="flow" style="justify-content: center;">
+    <div class="flow-item" style="background: var(--success); color: white;">&#10003; 開発者登録</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item" style="background: var(--success); color: white;">&#10003; App作成</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item" style="background: var(--success); color: white;">&#10003; API有効化</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item" style="background: var(--success); color: white;">&#10003; トークン取得</div>
+    <div class="flow-arrow">&#8594;</div>
+    <div class="flow-item" style="background: var(--success); color: white;">&#10003; 連携完了</div>
+  </div>
+  <div style="margin-top: 32px;">
+    <a href="https://threads-analytics-eight.vercel.app" target="_blank" rel="noopener" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; border-radius: 8px; font-weight: 600; font-size: 1rem; text-decoration: none; box-shadow: 0 4px 12px rgba(124,58,237,0.3);">Threads Studio Lab を開く</a>
+  </div>
+</section>
+
+</main>
+
+<!-- ===== フッター ===== -->
+<footer class="footer">
+  <p>&copy; 2025-2026 Threads Studio Lab. All rights reserved.</p>
+  <p style="margin-top: 4px;">
+    <a href="https://threads-analytics-eight.vercel.app">アプリ</a> &nbsp;|&nbsp;
+    <a href="https://threads-analytics-eight.vercel.app/pricing">料金プラン</a> &nbsp;|&nbsp;
+    <a href="https://threads-analytics-eight.vercel.app/guide">ガイド</a>
+  </p>
+</footer>
+
+<!-- ===== JavaScript ===== -->
+<script>
+/* サイドバー開閉（スマホ） */
+function toggleSidebar() {
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebarOverlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('open');
+}
+
+/* コピー機能 */
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      showCopyFeedback(event.target);
+    });
+  } else {
+    /* フォールバック */
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    showCopyFeedback(event.target);
+  }
+}
+
+function showCopyFeedback(btn) {
+  if (!btn || btn.nodeType !== 1) return;
+  var original = btn.textContent;
+  btn.textContent = 'コピーしました!';
+  btn.style.background = 'var(--success)';
+  btn.style.color = 'white';
+  setTimeout(function() {
+    btn.textContent = original;
+    btn.style.background = '';
+    btn.style.color = '';
+  }, 1500);
+}
+
+/* スクロール進捗トラッキング */
+(function() {
+  var sections = document.querySelectorAll('.section[id]');
+  var progressFill = document.getElementById('progressFill');
+  var progressText = document.getElementById('progressText');
+  var totalSections = 11;
+
+  function updateProgress() {
+    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+    var windowHeight = window.innerHeight;
+    var completed = 0;
+
+    for (var i = 0; i < sections.length; i++) {
+      var rect = sections[i].getBoundingClientRect();
+      if (rect.top + rect.height * 0.5 < windowHeight) {
+        completed = i + 1;
+      }
+    }
+
+    if (completed > totalSections) completed = totalSections;
+
+    var percent = Math.round((completed / totalSections) * 100);
+    if (progressFill) progressFill.style.width = percent + '%';
+    if (progressText) progressText.textContent = completed + ' / ' + totalSections + ' セクション';
+  }
+
+  window.addEventListener('scroll', updateProgress);
+  updateProgress();
+})();
+
+/* サイドバー現在位置ハイライト */
+(function() {
+  var links = document.querySelectorAll('.toc-list a');
+  var sections = document.querySelectorAll('.section[id]');
+
+  function highlightCurrent() {
+    var scrollTop = window.scrollY || document.documentElement.scrollTop;
+    var current = '';
+
+    for (var i = 0; i < sections.length; i++) {
+      var top = sections[i].offsetTop - 100;
+      if (scrollTop >= top) {
+        current = sections[i].getAttribute('id');
+      }
+    }
+
+    for (var j = 0; j < links.length; j++) {
+      links[j].style.borderLeftColor = 'transparent';
+      links[j].style.color = '';
+      links[j].style.background = '';
+      if (links[j].getAttribute('href') === '#' + current) {
+        links[j].style.borderLeftColor = 'var(--primary)';
+        links[j].style.color = 'var(--primary)';
+        links[j].style.background = 'var(--primary-50)';
+      }
+    }
+  }
+
+  window.addEventListener('scroll', highlightCurrent);
+  highlightCurrent();
+})();
+
+/* スマホでサイドバーリンククリック時に閉じる */
+(function() {
+  var links = document.querySelectorAll('.toc-list a');
+  for (var i = 0; i < links.length; i++) {
+    links[i].addEventListener('click', function() {
+      if (window.innerWidth <= 768) {
+        toggleSidebar();
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

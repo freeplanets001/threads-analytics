@@ -28,6 +28,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [useApi, setUseApi] = useState(false);
+  const [apiErrorDetail, setApiErrorDetail] = useState<string | null>(null);
 
   // 新規スケジュール投稿用
   const [showAddForm, setShowAddForm] = useState(false);
@@ -88,46 +89,93 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
     localStorage.removeItem('scheduled_posts');
   }, [accountId]);
 
-  // データ取得
+  // APIを呼び出し、成功時にデータを返す。失敗時はnullとエラー情報を返す
+  const tryFetchApi = useCallback(async (): Promise<{ posts: ScheduledPost[] } | { error: string; status: number }> => {
+    const response = await fetch('/api/scheduled');
+    if (response.ok) {
+      const data = await response.json();
+      const scheduled = (data.scheduledPosts || []).filter((p: { isRecurring?: boolean }) => !p.isRecurring);
+      return { posts: scheduled };
+    }
+    // エラー詳細を取得
+    let errorMsg = `API エラー (${response.status})`;
+    try {
+      const errorData = await response.json();
+      if (errorData.error) {
+        errorMsg = errorData.error;
+      }
+    } catch {
+      // JSONパース失敗は無視
+    }
+    return { error: errorMsg, status: response.status };
+  }, []);
+
+  // データ取得（リトライ付き）
   const fetchScheduledPosts = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setApiErrorDetail(null);
 
-    try {
-      const response = await fetch('/api/scheduled');
-      if (response.ok) {
-        const data = await response.json();
-        const scheduled = (data.scheduledPosts || []).filter((p: { isRecurring?: boolean }) => !p.isRecurring);
+    // APIを最大2回試行
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = await tryFetchApi();
 
-        if (scheduled.length === 0 && accountId) {
-          const saved = localStorage.getItem('scheduled_posts');
-          if (saved) {
-            const localPosts = JSON.parse(saved) as ScheduledPost[];
-            const pendingPosts = localPosts.filter(p => p.status === 'pending' && new Date(p.scheduledAt) > new Date());
-            if (pendingPosts.length > 0) {
-              await migrateLocalPostsToApi(localPosts);
-              const refreshResponse = await fetch('/api/scheduled');
-              if (refreshResponse.ok) {
-                const refreshData = await refreshResponse.json();
-                const refreshScheduled = (refreshData.scheduledPosts || []).filter((p: { isRecurring?: boolean }) => !p.isRecurring);
-                setPosts(refreshScheduled);
-                setUseApi(true);
-                setLoading(false);
-                return;
+        if ('posts' in result) {
+          // API成功
+          const scheduled = result.posts;
+
+          // APIにデータがなくlocalStorageにpending投稿がある場合、マイグレーション
+          if (scheduled.length === 0 && accountId) {
+            const saved = localStorage.getItem('scheduled_posts');
+            if (saved) {
+              const localPosts = JSON.parse(saved) as ScheduledPost[];
+              const pendingPosts = localPosts.filter(p => p.status === 'pending' && new Date(p.scheduledAt) > new Date());
+              if (pendingPosts.length > 0) {
+                await migrateLocalPostsToApi(localPosts);
+                const refreshResult = await tryFetchApi();
+                if ('posts' in refreshResult) {
+                  setPosts(refreshResult.posts);
+                  setUseApi(true);
+                  setLoading(false);
+                  return;
+                }
               }
             }
           }
+
+          setPosts(scheduled);
+          setUseApi(true);
+          setLoading(false);
+          return;
         }
 
-        setPosts(scheduled);
-        setUseApi(true);
-        setLoading(false);
-        return;
+        // API失敗 - 401/503はリトライで改善する可能性がある
+        const retryableStatuses = [500, 502, 503, 504];
+        if (attempt < MAX_RETRIES - 1 && retryableStatuses.includes(result.status)) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+
+        // リトライ上限に達した場合、エラー詳細を保存
+        setApiErrorDetail(result.error);
+        console.warn(`Scheduled API failed: ${result.error} (status: ${result.status})`);
+        break;
+      } catch (e) {
+        // ネットワークエラー
+        if (attempt < MAX_RETRIES - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        const networkError = e instanceof Error ? e.message : 'ネットワークエラー';
+        setApiErrorDetail(networkError);
+        console.warn('Scheduled API network error:', networkError);
+        break;
       }
-    } catch (e) {
-      console.log('API not available, falling back to localStorage', e);
     }
 
+    // localStorage フォールバック
     try {
       const saved = localStorage.getItem('scheduled_posts');
       if (saved) {
@@ -135,7 +183,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         const now = new Date();
         const updated = allPosts.map(post => {
           if (post.status === 'pending' && new Date(post.scheduledAt) < now) {
-            return { ...post, status: 'failed' as const, errorMessage: '予約時刻を過ぎました' };
+            return { ...post, status: 'failed' as const, errorMessage: '予約時刻を過ぎました（ローカルモードでは自動投稿されません）' };
           }
           return post;
         });
@@ -149,7 +197,7 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
       setError('読み込みに失敗しました');
     }
     setLoading(false);
-  }, [accountId, migrateLocalPostsToApi]);
+  }, [accountId, migrateLocalPostsToApi, tryFetchApi]);
 
   useEffect(() => {
     fetchScheduledPosts();
@@ -188,6 +236,12 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
   // スケジュール投稿を追加
   const handleAddPost = async () => {
     if (!isAddFormValid()) return;
+
+    // ローカルモードの場合は投稿不可（自動実行されないため）
+    if (!useApi) {
+      setError('サーバーに接続されていないため、予約投稿を作成できません。ページを再読み込みするか「再接続を試す」ボタンを押してください。');
+      return;
+    }
 
     setAdding(true);
     setError(null);
@@ -233,21 +287,15 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
         }
       } catch (e) {
         console.error('API save failed', e);
+        setError('サーバーとの通信に失敗しました。ページを再読み込みしてください。');
+        setAdding(false);
+        return;
       }
     }
 
-    const newPost: ScheduledPost = {
-      id: `schedule-${Date.now()}`,
-      text: newPostType === 'text' ? newPostText : null,
-      threadPosts: newPostType === 'thread' ? JSON.stringify(newThreadPosts) : null,
-      scheduledAt: scheduledAt.toISOString(),
-      status: 'pending',
-      type: newPostType,
-    };
-
-    saveToLocal([...posts, newPost]);
-    resetAddForm();
-    if (onRefresh) onRefresh();
+    // useApiがfalseの場合はここに到達しない（上部のガード節でブロック済み）
+    setError('予約投稿の保存に失敗しました');
+    setAdding(false);
   };
 
   // スケジュール投稿を削除
@@ -763,16 +811,35 @@ export function ScheduleManager({ accessToken, accountId, onRefresh }: ScheduleM
           </div>
         )}
 
-        <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-          <p className="text-sm text-indigo-700 dark:text-indigo-400">
+        <div className={`mt-4 p-3 rounded-lg border ${
+          useApi
+            ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+            : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+        }`}>
+          <p className={`text-sm ${
+            useApi
+              ? 'text-indigo-700 dark:text-indigo-400'
+              : 'text-amber-700 dark:text-amber-400'
+          }`}>
             {useApi ? (
               <>
-                <strong>サーバー連携有効:</strong> 予約投稿はサーバー側で定期的に実行されます。
+                <strong>サーバー連携有効:</strong> 予約投稿はサーバー側で10分毎に自動実行されます。
               </>
             ) : (
               <>
-                <strong>ローカルモード:</strong> データベースに接続されていないため、予約はブラウザに保存されます。
-                実際の投稿には cron-job.org での設定が必要です。
+                <strong>ローカルモード:</strong> サーバーに接続できないため、予約はブラウザに保存されています。
+                ローカルモードでは予約投稿は自動実行されません。
+                {apiErrorDetail && (
+                  <span className="block mt-1 text-xs text-amber-600 dark:text-amber-500">
+                    原因: {apiErrorDetail}
+                  </span>
+                )}
+                <button
+                  onClick={() => fetchScheduledPosts()}
+                  className="mt-2 inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded-md hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
+                >
+                  再接続を試す
+                </button>
               </>
             )}
           </p>
