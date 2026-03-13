@@ -26,7 +26,6 @@ export async function GET() {
         accessToken: true,
         tokenExpiresAt: true,
         appId: true,
-        appSecret: true,
         createdAt: true,
       },
     });
