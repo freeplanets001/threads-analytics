@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/posts",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/autoreply",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

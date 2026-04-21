@@ -30,9 +30,13 @@ interface AutoReplyRule {
 // 5分ごとに実行されるCronジョブ
 export async function GET(request: NextRequest) {
   try {
-    // Cron認証チェック（本番環境用）
+    // Cron認証チェック（CRON_SECRET未設定時は全拒否）
     const authHeader = request.headers.get('authorization');
-    if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+    if (!CRON_SECRET) {
+      console.error('CRON_SECRET is not configured');
+      return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
+    }
+    if (authHeader !== `Bearer ${CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -122,9 +126,9 @@ export async function GET(request: NextRequest) {
               // プレースホルダーを置換
               const replyText = rule.responseText.replace(/{username}/g, reply.username);
 
-              // 遅延を適用（最小10秒）
+              // 遅延を適用（最小10秒、最大30秒）
               const delay = Math.max(rule.responseDelay * 1000, 10000);
-              await new Promise(resolve => setTimeout(resolve, Math.min(delay, 30000))); // 最大30秒
+              await new Promise(resolve => setTimeout(resolve, Math.min(delay, 30000)));
 
               // リプライを投稿
               const result = await client.postText(replyText, reply.id);
@@ -134,7 +138,7 @@ export async function GET(request: NextRequest) {
                 data: {
                   ruleId: rule.id,
                   originalPostId: post.id,
-                  originalUserId: reply.id, // ユーザーIDは不明なのでリプライIDで代用
+                  originalUserId: reply.id,
                   originalUsername: reply.username,
                   originalText: reply.text || null,
                   replyPostId: result.id,
@@ -156,6 +160,14 @@ export async function GET(request: NextRequest) {
               rule.todayReplies++;
               ruleResult.replied++;
 
+              // 送信成功時のみ処理済みとしてマーク（失敗時は次回再試行させる）
+              await prisma.processedReply.create({
+                data: {
+                  accountId: rule.accountId,
+                  replyId: reply.id,
+                },
+              });
+
             } catch (replyError) {
               console.error(`Failed to send auto-reply for rule ${rule.id}:`, replyError);
 
@@ -175,14 +187,6 @@ export async function GET(request: NextRequest) {
 
               ruleResult.errors.push(`Reply failed: ${replyError instanceof Error ? replyError.message : 'Unknown error'}`);
             }
-
-            // 処理済みとしてマーク
-            await prisma.processedReply.create({
-              data: {
-                accountId: rule.accountId,
-                replyId: reply.id,
-              },
-            });
           }
         }
       } catch (error) {
