@@ -274,8 +274,21 @@ export function useAccountManager() {
     return true;
   }, [accounts, saveAccounts]);
 
-  // Remove an account
-  const removeAccount = useCallback((accountId: string) => {
+  // Remove an account (DBとlocalStorageの両方から削除)
+  const removeAccount = useCallback(async (accountId: string) => {
+    // DBから先に削除（リロード後の復活を防ぐ）
+    try {
+      const res = await fetch(`/api/accounts?id=${encodeURIComponent(accountId)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok && res.status !== 404) {
+        console.error('Failed to delete account from DB:', await res.text());
+      }
+    } catch (err) {
+      console.error('Failed to delete account from DB', err);
+    }
+
+    // ローカル状態とlocalStorageを更新
     const newAccounts = accounts.filter(a => a.id !== accountId);
     saveAccounts(newAccounts);
 
