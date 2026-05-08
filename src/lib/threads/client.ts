@@ -343,7 +343,12 @@ export class ThreadsAPIClient {
       }>(`/${postId}/replies`, {
         fields: 'id,text,timestamp,username,like_count',
       });
-    } catch {
+    } catch (err) {
+      // 観測性のため、リプライ取得失敗時はエラーをログに残す（呼び出し側は空配列で続行）
+      console.error(
+        `[ThreadsAPIClient.getPostReplies] postId=${postId} error:`,
+        err instanceof Error ? err.message : err
+      );
       return { data: [] };
     }
   }

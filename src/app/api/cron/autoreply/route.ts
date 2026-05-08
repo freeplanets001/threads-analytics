@@ -5,6 +5,15 @@ import { ThreadsAPIClient } from '@/lib/threads/client';
 // Vercel Cron認証
 const CRON_SECRET = process.env.CRON_SECRET;
 
+// Vercel Functions の最大実行時間（cronタイムアウト対策）
+export const maxDuration = 60;
+
+// 取得対象の最近の投稿数（多すぎるとレート制限に当たる、少なすぎると古い投稿のリプライを拾えない）
+const RECENT_POSTS_TO_SCAN = 25;
+
+// 1cron実行で残り時間が少なくなったら早期終了する閾値（秒）
+const TIME_BUDGET_RESERVE_SECONDS = 8;
+
 interface AutoReplyRule {
   id: string;
   accountId: string;
@@ -44,8 +53,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Database not available' }, { status: 503 });
     }
 
+    const cronStartedAt = Date.now();
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // cron発火を可視化（管理画面から最後の実行時刻を確認できる）
+    await prisma.systemSetting.upsert({
+      where: { key: 'autoreply_last_run_at' },
+      create: { key: 'autoreply_last_run_at', value: now.toISOString() },
+      update: { value: now.toISOString() },
+    }).catch(err => console.error('Failed to upsert autoreply_last_run_at:', err));
+
+    // 残り時間を計算（早期終了判定用）
+    const timeRemainingMs = () => maxDuration * 1000 - (Date.now() - cronStartedAt);
+    let earlyExit = false;
 
     // アクティブなルールを取得
     const rules = await prisma.autoReplyRule.findMany({
@@ -66,6 +87,14 @@ export async function GET(request: NextRequest) {
     for (const rule of rules) {
       const ruleResult = { ruleId: rule.id, ruleName: rule.name, processed: 0, replied: 0, errors: [] as string[] };
 
+      // 残り時間が少なければスキップ（次回cronで処理）
+      if (timeRemainingMs() < TIME_BUDGET_RESERVE_SECONDS * 1000) {
+        ruleResult.errors.push('Skipped: time budget exhausted');
+        results.push(ruleResult);
+        earlyExit = true;
+        continue;
+      }
+
       try {
         // 日付リセットチェック
         if (!rule.lastResetDate || new Date(rule.lastResetDate) < today) {
@@ -85,10 +114,27 @@ export async function GET(request: NextRequest) {
 
         const client = new ThreadsAPIClient(rule.account.accessToken);
 
-        // 最近の投稿を取得
-        const { data: posts } = await client.getMyThreads(10);
+        // 最近の投稿を取得（取得失敗時はそのルールをスキップ、他のルールには波及させない）
+        let posts: Awaited<ReturnType<typeof client.getMyThreads>>['data'];
+        try {
+          const r = await client.getMyThreads(RECENT_POSTS_TO_SCAN);
+          posts = r.data;
+        } catch (e) {
+          ruleResult.errors.push(
+            `getMyThreads failed: ${e instanceof Error ? e.message : 'Unknown error'}`
+          );
+          console.error(`[autoreply] getMyThreads failed for rule ${rule.id}:`, e);
+          results.push(ruleResult);
+          continue;
+        }
 
         for (const post of posts) {
+          // 残り時間が無くなったら抜ける
+          if (timeRemainingMs() < TIME_BUDGET_RESERVE_SECONDS * 1000) {
+            ruleResult.errors.push('Stopped mid-rule: time budget exhausted');
+            earlyExit = true;
+            break;
+          }
           // 投稿のリプライを取得
           const { data: replies } = await client.getPostReplies(post.id);
 
@@ -118,6 +164,14 @@ export async function GET(request: NextRequest) {
 
             // 1日の上限再チェック
             if (rule.todayReplies >= rule.maxRepliesPerDay) {
+              break;
+            }
+
+            // 残り時間チェック（送信前に必ず）
+            const requiredMs = Math.min(Math.max(rule.responseDelay * 1000, 10000), 30000) + 5000;
+            if (timeRemainingMs() < requiredMs + TIME_BUDGET_RESERVE_SECONDS * 1000) {
+              ruleResult.errors.push('Stopped before reply send: time budget exhausted');
+              earlyExit = true;
               break;
             }
 
@@ -205,9 +259,39 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    const elapsedMs = Date.now() - cronStartedAt;
+
+    // 完了状態を記録（管理画面で観測できる）
+    await prisma.systemSetting.upsert({
+      where: { key: 'autoreply_last_completed_at' },
+      create: {
+        key: 'autoreply_last_completed_at',
+        value: JSON.stringify({
+          at: new Date().toISOString(),
+          elapsedMs,
+          rulesProcessed: rules.length,
+          earlyExit,
+          totalReplied: results.reduce((s, r) => s + r.replied, 0),
+          totalErrors: results.reduce((s, r) => s + r.errors.length, 0),
+        }),
+      },
+      update: {
+        value: JSON.stringify({
+          at: new Date().toISOString(),
+          elapsedMs,
+          rulesProcessed: rules.length,
+          earlyExit,
+          totalReplied: results.reduce((s, r) => s + r.replied, 0),
+          totalErrors: results.reduce((s, r) => s + r.errors.length, 0),
+        }),
+      },
+    }).catch(err => console.error('Failed to upsert autoreply_last_completed_at:', err));
+
     return NextResponse.json({
       success: true,
       timestamp: now.toISOString(),
+      elapsedMs,
+      earlyExit,
       rulesProcessed: rules.length,
       results,
     });
