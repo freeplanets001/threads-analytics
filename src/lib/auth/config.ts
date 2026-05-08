@@ -169,37 +169,39 @@ export const authConfig: NextAuthConfig = {
         token.id = user.id;
       }
 
-      // ユーザー情報の更新時（サブスク変更など）
-      if (trigger === 'update' && prisma && token.id) {
-        try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: { role: true, plan: true, planExpiresAt: true },
-          });
-          if (dbUser) {
-            token.role = dbUser.role;
-            token.plan = dbUser.plan;
-            token.planExpiresAt = dbUser.planExpiresAt?.toISOString();
-          }
-        } catch (error) {
-          console.error('[Auth] jwt update error:', error);
-        }
-      }
+      // role/plan を DB から取り直すべきタイミング:
+      //   - 初回サインイン (account あり)
+      //   - useSession().update() などによる明示更新
+      //   - role が未設定（旧JWT・signIn callback での id mutation 失敗時のリカバリ）
+      const shouldRefresh =
+        !!account || trigger === 'update' || !token.role;
 
-      // 初回サインイン時にロールとプランを取得
-      if (account && prisma && token.id) {
+      if (shouldRefresh && prisma) {
         try {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: { role: true, plan: true, planExpiresAt: true },
-          });
+          // Google OAuth では signIn callback で user.id を mutate しても
+          // 後続 jwt callback の token.id に反映されないケースがあるため、
+          // id でヒットしなければ email でフォールバックする
+          let dbUser = null;
+          if (token.id) {
+            dbUser = await prisma.user.findUnique({
+              where: { id: token.id as string },
+              select: { id: true, role: true, plan: true, planExpiresAt: true },
+            });
+          }
+          if (!dbUser && token.email) {
+            dbUser = await prisma.user.findUnique({
+              where: { email: token.email as string },
+              select: { id: true, role: true, plan: true, planExpiresAt: true },
+            });
+          }
           if (dbUser) {
+            token.id = dbUser.id;
             token.role = dbUser.role;
             token.plan = dbUser.plan;
             token.planExpiresAt = dbUser.planExpiresAt?.toISOString();
           }
         } catch (error) {
-          console.error('[Auth] jwt initial error:', error);
+          console.error('[Auth] jwt refresh error:', error);
         }
       }
 
