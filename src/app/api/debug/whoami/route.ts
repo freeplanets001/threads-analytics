@@ -2,49 +2,67 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma, isDatabaseAvailable } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 // 一時診断用: セッションとDBのrole不整合を切り分けるためのエンドポイント
-// 自分自身の情報のみ返す（他者の情報は返さない）
 export async function GET() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return NextResponse.json({ session: null, note: 'Not signed in' }, { status: 401 });
-  }
-
-  const sessionInfo = {
-    id: session.user.id,
-    email: session.user.email,
-    role: (session.user as { role?: string }).role,
-    plan: (session.user as { plan?: string }).plan,
+  const result: Record<string, unknown> = {
+    step: 'start',
   };
 
-  let dbBySessionId = null;
-  let dbByEmail = null;
+  try {
+    result.step = 'before-auth';
+    const session = await auth();
+    result.step = 'after-auth';
 
-  if (isDatabaseAvailable() && prisma) {
-    if (session.user.id) {
-      dbBySessionId = await prisma.user.findUnique({
-        where: { id: session.user.id },
+    if (!session) {
+      result.session = null;
+      result.note = 'auth() returned null';
+      return NextResponse.json(result);
+    }
+
+    if (!session.user) {
+      result.session = { exists: true, user: null };
+      result.note = 'session.user is null';
+      return NextResponse.json(result);
+    }
+
+    const u = session.user as {
+      id?: string;
+      email?: string | null;
+      role?: string;
+      plan?: string;
+    };
+
+    result.session = {
+      id: u.id ?? null,
+      email: u.email ?? null,
+      role: u.role ?? null,
+      plan: u.plan ?? null,
+    };
+
+    result.step = 'before-db';
+    if (!isDatabaseAvailable() || !prisma) {
+      result.note = 'DB not available';
+      return NextResponse.json(result);
+    }
+
+    result.step = 'db-query-by-email';
+    if (u.email) {
+      const dbByEmail = await prisma.user.findUnique({
+        where: { email: u.email },
         select: { id: true, email: true, role: true, plan: true },
       });
+      result.dbByEmail = dbByEmail;
     }
-    if (session.user.email) {
-      dbByEmail = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: { id: true, email: true, role: true, plan: true },
-      });
-    }
+
+    result.step = 'done';
+    return NextResponse.json(result);
+  } catch (err) {
+    result.error = {
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack?.split('\n').slice(0, 5) : undefined,
+    };
+    return NextResponse.json(result, { status: 500 });
   }
-
-  return NextResponse.json({
-    session: sessionInfo,
-    dbBySessionId,
-    dbByEmail,
-    sessionIdMatchesDbId: dbByEmail ? session.user.id === dbByEmail.id : null,
-    diagnosis: !sessionInfo.role
-      ? 'JWT に role が入っていない → jwt callback の DB lookup が走っていない可能性'
-      : sessionInfo.role !== dbByEmail?.role
-        ? 'JWT の role が DB と不一致 → 古い JWT がキャッシュされている可能性。再ログイン必要'
-        : 'JWT と DB は一致している → UI 側のキャッシュ/状態問題',
-  });
 }
