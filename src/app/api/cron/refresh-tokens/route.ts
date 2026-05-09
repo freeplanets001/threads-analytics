@@ -86,16 +86,27 @@ export async function GET(request: NextRequest) {
 
         // 失敗時はユーザーに通知（再認証を促す）
         try {
-          await prisma.notification.create({
-            data: {
+          // 同一アカウントで未読の失敗通知が既にあれば作らない（重複抑制）
+          const existing = await prisma.notification.findFirst({
+            where: {
               userId: account.userId,
-              type: 'system',
-              title: 'Threadsトークンの自動更新に失敗しました',
-              message: `アカウント @${account.username} のトークン更新に失敗しました。期限切れ前に再認証してください。エラー: ${message.substring(0, 200)}`,
+              type: 'token_failed',
               relatedId: account.id,
-              relatedType: 'threads_account',
+              isRead: false,
             },
           });
+          if (!existing) {
+            await prisma.notification.create({
+              data: {
+                userId: account.userId,
+                type: 'token_failed',
+                title: 'Threadsトークンの自動更新に失敗しました',
+                message: `アカウント @${account.username} のトークン更新に失敗しました。期限切れ前に再認証してください。エラー: ${message.substring(0, 200)}`,
+                relatedId: account.id,
+                relatedType: 'threads_account',
+              },
+            });
+          }
         } catch (notifyErr) {
           console.error('Failed to create failure notification:', notifyErr);
         }

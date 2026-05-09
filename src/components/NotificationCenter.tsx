@@ -1,22 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, type ReactElement } from 'react';
 
-interface Notification {
+// DB の通知テーブルと一致する型（type は文字列、自由形式）
+export interface DbNotification {
   id: string;
-  type: 'info' | 'success' | 'warning' | 'error';
+  type: string;
   title: string;
   message: string;
-  read: boolean;
+  isRead: boolean;
+  relatedId?: string | null;
+  relatedType?: string | null;
   createdAt: string;
-  link?: string;
+}
+
+// UI 表示用カテゴリ（DB type 文字列を info/success/warning/error にマップ）
+type UiCategory = 'info' | 'success' | 'warning' | 'error';
+
+function mapToUiCategory(dbType: string): UiCategory {
+  const t = (dbType || '').toLowerCase();
+  if (t === 'success' || t === 'post_success' || t === 'report_ready') return 'success';
+  if (t === 'warning' || t === 'token_expiring' || t === 'system') return 'warning';
+  if (t === 'error' || t === 'post_failed' || t === 'token_failed' || t === 'autoreply_failed') return 'error';
+  return 'info';
 }
 
 interface NotificationCenterProps {
   onClose: () => void;
 }
 
-const NOTIFICATION_ICONS = {
+const NOTIFICATION_ICONS: Record<UiCategory, ReactElement> = {
   info: (
     <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -40,70 +53,76 @@ const NOTIFICATION_ICONS = {
 };
 
 export function NotificationCenter({ onClose }: NotificationCenterProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<DbNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 通知を読み込み（localStorage使用）
-  useEffect(() => {
-    const saved = localStorage.getItem('notifications');
-    if (saved) {
-      setNotifications(JSON.parse(saved));
-    } else {
-      // 初回はサンプル通知を表示
-      const sampleNotifications: Notification[] = [
-        {
-          id: '1',
-          type: 'success',
-          title: 'ようこそ！',
-          message: 'Threads Studio Labへようこそ。まずはアクセストークンを設定してください。',
-          read: false,
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          type: 'info',
-          title: '新機能のお知らせ',
-          message: 'AI一括生成機能が追加されました。複数の投稿を一度に生成できます。',
-          read: false,
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-        },
-      ];
-      setNotifications(sampleNotifications);
-      localStorage.setItem('notifications', JSON.stringify(sampleNotifications));
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications', { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`Failed to load (${res.status})`);
+      }
+      const data = await res.json();
+      setNotifications(data.notifications ?? []);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load notifications');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  // 通知を既読にする
-  const markAsRead = (id: string) => {
-    const updated = notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    );
-    setNotifications(updated);
-    localStorage.setItem('notifications', JSON.stringify(updated));
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // 1件既読
+  const markAsRead = async (id: string) => {
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, isRead: true } : n)));
+    try {
+      await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, { method: 'PATCH' });
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
+    } catch {
+      // 失敗時は再読込で整合性を取る
+      load();
+    }
   };
 
-  // 全て既読にする
-  const markAllAsRead = () => {
-    const updated = notifications.map(n => ({ ...n, read: true }));
-    setNotifications(updated);
-    localStorage.setItem('notifications', JSON.stringify(updated));
+  // すべて既読
+  const markAllAsRead = async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    try {
+      await fetch('/api/notifications?all=1', { method: 'PATCH' });
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
+    } catch {
+      load();
+    }
   };
 
-  // 通知を削除
-  const deleteNotification = (id: string) => {
-    const updated = notifications.filter(n => n.id !== id);
-    setNotifications(updated);
-    localStorage.setItem('notifications', JSON.stringify(updated));
+  // 1件削除
+  const deleteNotification = async (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    try {
+      await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
+    } catch {
+      load();
+    }
   };
 
-  // 全て削除
-  const clearAll = () => {
+  // すべて削除
+  const clearAll = async () => {
     setNotifications([]);
-    localStorage.setItem('notifications', JSON.stringify([]));
+    try {
+      await fetch('/api/notifications?all=1', { method: 'DELETE' });
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
+    } catch {
+      load();
+    }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -163,6 +182,16 @@ export function NotificationCenter({ onClose }: NotificationCenterProps) {
             <div className="p-8 text-center">
               <div className="w-8 h-8 border-2 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
             </div>
+          ) : error ? (
+            <div className="p-8 text-center">
+              <p className="text-red-500 text-sm">{error}</p>
+              <button
+                onClick={load}
+                className="mt-3 text-xs text-violet-600 hover:text-violet-800"
+              >
+                再読み込み
+              </button>
+            </div>
           ) : notifications.length === 0 ? (
             <div className="p-8 text-center">
               <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -174,45 +203,46 @@ export function NotificationCenter({ onClose }: NotificationCenterProps) {
             </div>
           ) : (
             <div className="divide-y divide-slate-200 dark:divide-slate-700">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
-                    !notification.read ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''
-                  }`}
-                  onClick={() => markAsRead(notification.id)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 mt-0.5">
-                      {NOTIFICATION_ICONS[notification.type]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={`font-medium ${!notification.read ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
-                          {notification.title}
+              {notifications.map((notification) => {
+                const cat = mapToUiCategory(notification.type);
+                return (
+                  <div
+                    key={notification.id}
+                    className={`p-4 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer ${
+                      !notification.isRead ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''
+                    }`}
+                    onClick={() => markAsRead(notification.id)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-0.5">{NOTIFICATION_ICONS[cat]}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`font-medium ${!notification.isRead ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>
+                            {notification.title}
+                          </p>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(notification.id);
+                            }}
+                            className="text-slate-400 hover:text-red-500 flex-shrink-0"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-wrap">
+                          {notification.message}
                         </p>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteNotification(notification.id);
-                          }}
-                          className="text-slate-400 hover:text-red-500 flex-shrink-0"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
+                        <p className="text-xs text-slate-400 mt-2">
+                          {formatDate(notification.createdAt)}
+                        </p>
                       </div>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-2">
-                        {formatDate(notification.createdAt)}
-                      </p>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -221,17 +251,33 @@ export function NotificationCenter({ onClose }: NotificationCenterProps) {
   );
 }
 
-// 通知ベルアイコン（ヘッダー用）
+// 通知ベルアイコン（ヘッダー用）DBから未読数を取得し、ポーリング+イベント連動で更新
 export function NotificationBell({ onClick }: { onClick: () => void }) {
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('notifications');
-    if (saved) {
-      const notifications = JSON.parse(saved) as Notification[];
-      setUnreadCount(notifications.filter(n => !n.read).length);
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch('/api/notifications?unread=1&limit=1', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setUnreadCount(data.unreadCount ?? 0);
+    } catch {
+      // ignore
     }
   }, []);
+
+  useEffect(() => {
+    fetchUnread();
+    // 1分ごとに最新化
+    const interval = setInterval(fetchUnread, 60_000);
+    // 他コンポーネントが通知を操作した時に即時反映
+    const handleUpdate = () => fetchUnread();
+    window.addEventListener('notifications-updated', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('notifications-updated', handleUpdate);
+    };
+  }, [fetchUnread]);
 
   return (
     <button
@@ -251,24 +297,24 @@ export function NotificationBell({ onClick }: { onClick: () => void }) {
   );
 }
 
-// 通知を追加するユーティリティ関数
-export function addNotification(notification: Omit<Notification, 'id' | 'read' | 'createdAt'>) {
-  const saved = localStorage.getItem('notifications');
-  const notifications: Notification[] = saved ? JSON.parse(saved) : [];
-
-  const newNotification: Notification = {
-    ...notification,
-    id: `notification-${Date.now()}`,
-    read: false,
-    createdAt: new Date().toISOString(),
-  };
-
-  notifications.unshift(newNotification);
-
-  // 最大100件まで保持
-  const limited = notifications.slice(0, 100);
-  localStorage.setItem('notifications', JSON.stringify(limited));
-
-  // イベントを発火して他のコンポーネントに通知
-  window.dispatchEvent(new CustomEvent('notification-added', { detail: newNotification }));
+// クライアント側から通知をDBへ追加するヘルパ（イベント発火付き）
+export async function addNotification(notification: {
+  type: string;
+  title: string;
+  message: string;
+  relatedId?: string;
+  relatedType?: string;
+}) {
+  try {
+    const res = await fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notification),
+    });
+    if (res.ok) {
+      window.dispatchEvent(new CustomEvent('notifications-updated'));
+    }
+  } catch {
+    // 失敗時は黙って無視（致命でない）
+  }
 }
