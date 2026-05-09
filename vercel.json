@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/refresh-tokens",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/snapshots",
+      "schedule": "30 0 * * *"
     }
   ]
 }
