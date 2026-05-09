@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { auth } from '@/lib/auth';
 
 // サーバーサイド用Supabaseクライアント（service role key使用）
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -7,6 +8,12 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 export async function POST(request: NextRequest) {
   try {
+    // 認証必須（未認証ユーザーによる無差別アップロード防止）
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     if (!supabaseUrl || !supabaseServiceKey) {
       return NextResponse.json(
         { error: '画像アップロード機能が設定されていません' },
