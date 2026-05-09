@@ -16,11 +16,16 @@ export interface ThreadsLongLivedTokenResponse {
 }
 
 // 認証URLを生成
+// scope は環境変数 THREADS_OAUTH_SCOPES でカスタマイズ可（カンマ区切り）。
+// 既定は閲覧+投稿+返信管理+返信読取+分析。Meta App Reviewが未承認のスコープは認可画面で拒否されるので、必要に応じて減らす。
 export function getAuthorizationUrl(redirectUri: string, state?: string): string {
+  const defaultScopes = 'threads_basic,threads_content_publish,threads_manage_replies,threads_read_replies,threads_manage_insights';
+  const scope = (process.env.THREADS_OAUTH_SCOPES || defaultScopes).trim();
+
   const params = new URLSearchParams({
     client_id: process.env.THREADS_APP_ID || '',
     redirect_uri: redirectUri,
-    scope: 'threads_basic',
+    scope,
     response_type: 'code',
   });
 

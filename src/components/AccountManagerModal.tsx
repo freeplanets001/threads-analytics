@@ -381,6 +381,30 @@ export function AccountManagerModal({
           {/* アカウント追加タブ */}
           {activeTab === 'add' && (
             <div className="space-y-4">
+              {/* Threads OAuth でワンクリック連携 */}
+              <div className="p-4 bg-gradient-to-br from-violet-50 to-cyan-50 rounded-xl border border-violet-100">
+                <h3 className="text-sm font-semibold text-slate-800 mb-1">Threadsでログインして連携</h3>
+                <p className="text-xs text-slate-600 mb-3">
+                  推奨。Threadsのアカウントで認証するだけで、トークンの取得・更新が自動で行われます。
+                </p>
+                <a
+                  href="/api/auth/threads"
+                  className="inline-flex items-center justify-center w-full py-3 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-black transition-colors"
+                >
+                  <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor"><path d="M16.7 11.4c0-2.5-1.4-4-3.8-4-1.4 0-2.5.6-3.4 1.6L8.3 7.5c1.4-1.5 3.1-2.3 5.1-2.3 3.6 0 5.7 2.4 5.7 5.9 0 3.6-2.5 6-6.4 6-3.7 0-6.1-2.2-6.5-5.6h2.4c.3 1.9 1.7 3.2 4.1 3.2 2.5 0 4-1.5 4-3.3z"/></svg>
+                  Threadsで連携する
+                </a>
+                <p className="text-[11px] text-slate-500 mt-2">
+                  ※ 開発モードでは、Meta Developer Portalにテスターとして招待されたアカウントのみ連携できます。
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs text-slate-400">または手動でトークンを入力</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+
               {/* Meta App設定 */}
               <div className="p-3 bg-slate-50 rounded-xl">
                 <h3 className="text-sm font-semibold text-slate-700 mb-2">Meta App設定（推奨）</h3>
