@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 interface Template {
   id: string;
@@ -74,69 +74,128 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
   const [templateText, setTemplateText] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // テンプレート読み込み（localStorage使用）
-  useEffect(() => {
-    const saved = localStorage.getItem('post_templates');
-    if (saved) {
-      setTemplates(JSON.parse(saved));
-    } else {
-      // 初回はプリセットを設定
-      const initial = PRESET_TEMPLATES.map((t, i) => ({
-        ...t,
-        id: `preset-${i}`,
-        usageCount: 0,
-        createdAt: new Date().toISOString(),
-      }));
-      setTemplates(initial);
-      localStorage.setItem('post_templates', JSON.stringify(initial));
+  // 初回プリセット投入: テンプレが0件のときのみサーバーに登録
+  const seedPresetsIfEmpty = useCallback(async (current: Template[]): Promise<Template[]> => {
+    if (current.length > 0) return current;
+    const created: Template[] = [];
+    for (const preset of PRESET_TEMPLATES) {
+      try {
+        const res = await fetch('/api/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(preset),
+        });
+        if (res.ok) {
+          const { template } = await res.json();
+          created.push(template);
+        }
+      } catch {
+        // 無視
+      }
     }
-    setLoading(false);
+    return created;
   }, []);
 
-  // テンプレート保存
-  const saveTemplates = (newTemplates: Template[]) => {
-    setTemplates(newTemplates);
-    localStorage.setItem('post_templates', JSON.stringify(newTemplates));
-  };
+  // テンプレート読み込み（DB）
+  const loadTemplates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/templates', { cache: 'no-store' });
+      if (!res.ok) {
+        setTemplates([]);
+        return;
+      }
+      const data = await res.json();
+      const list: Template[] = data.templates ?? [];
+      // 初回はプリセットを投入
+      if (list.length === 0) {
+        const seeded = await seedPresetsIfEmpty(list);
+        setTemplates(seeded);
+      } else {
+        setTemplates(list);
+      }
+    } catch {
+      setTemplates([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [seedPresetsIfEmpty]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
 
   // テンプレート追加/編集
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!templateName.trim() || !templateText.trim()) return;
-
     if (maxTemplates !== -1 && templates.length >= maxTemplates && !editingTemplate) {
       alert(`テンプレートは最大${maxTemplates}件までです`);
       return;
     }
 
     setSaving(true);
-
-    const newTemplate: Template = {
-      id: editingTemplate?.id || `custom-${Date.now()}`,
-      name: templateName,
-      description: templateDesc || null,
-      category: templateCategory,
-      text: templateText,
-      type: 'text',
-      usageCount: editingTemplate?.usageCount || 0,
-      createdAt: editingTemplate?.createdAt || new Date().toISOString(),
-    };
-
-    if (editingTemplate) {
-      saveTemplates(templates.map(t => t.id === editingTemplate.id ? newTemplate : t));
-    } else {
-      saveTemplates([...templates, newTemplate]);
+    try {
+      if (editingTemplate) {
+        const res = await fetch(`/api/templates?id=${encodeURIComponent(editingTemplate.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: templateName,
+            description: templateDesc || null,
+            category: templateCategory,
+            text: templateText,
+            type: 'text',
+          }),
+        });
+        if (res.ok) {
+          const { template } = await res.json();
+          setTemplates(prev => prev.map(t => (t.id === template.id ? template : t)));
+        } else {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || '更新に失敗しました');
+        }
+      } else {
+        const res = await fetch('/api/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: templateName,
+            description: templateDesc || null,
+            category: templateCategory,
+            text: templateText,
+            type: 'text',
+          }),
+        });
+        if (res.ok) {
+          const { template } = await res.json();
+          setTemplates(prev => [template, ...prev]);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || '作成に失敗しました');
+          return;
+        }
+      }
+      setShowEditor(false);
+      setEditingTemplate(null);
+      resetForm();
+    } finally {
+      setSaving(false);
     }
-
-    setShowEditor(false);
-    setEditingTemplate(null);
-    resetForm();
-    setSaving(false);
   };
 
   // 削除
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('このテンプレートを削除しますか？')) return;
-    saveTemplates(templates.filter(t => t.id !== id));
+    const prev = templates;
+    setTemplates(p => p.filter(t => t.id !== id));
+    try {
+      const res = await fetch(`/api/templates?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) {
+        setTemplates(prev);
+        alert('削除に失敗しました');
+      }
+    } catch {
+      setTemplates(prev);
+    }
   };
 
   // テンプレート変数を置換
@@ -164,14 +223,23 @@ export function TemplateManager({ onSelectTemplate, maxTemplates = -1 }: Templat
   };
 
   // 使用
-  const handleUse = (template: Template) => {
-    // 使用回数を増やす
-    saveTemplates(templates.map(t =>
-      t.id === template.id ? { ...t, usageCount: t.usageCount + 1 } : t
-    ));
+  const handleUse = async (template: Template) => {
+    // 楽観更新
+    setTemplates(prev =>
+      prev.map(t => (t.id === template.id ? { ...t, usageCount: t.usageCount + 1 } : t))
+    );
+    // サーバー側でも使用回数をインクリメント
+    try {
+      await fetch(`/api/templates?id=${encodeURIComponent(template.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incrementUsage: true }),
+      });
+    } catch {
+      // 失敗は致命でないので無視
+    }
 
     if (onSelectTemplate) {
-      // 変数を置換してからコールバック
       const resolvedTemplate = {
         ...template,
         text: template.text ? replaceVariables(template.text) : template.text,
